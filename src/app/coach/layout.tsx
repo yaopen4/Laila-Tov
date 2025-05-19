@@ -1,0 +1,73 @@
+"use client";
+
+import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import AppLogo from "@/components/shared/app-logo";
+import { Button } from "@/components/ui/button";
+import { LogOut, LayoutDashboard, UserPlus, Users } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+
+export default function CoachLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  const navItems = [
+    { href: "/coach/dashboard", label: "לוח בקרה", icon: Users },
+    { href: "/coach/add-baby", label: "הוספת תינוק", icon: UserPlus },
+  ];
+
+  return (
+    <SidebarProvider defaultOpen>
+      <Sidebar ScollableArea={undefined} collapsible="icon">
+        <SidebarHeader>
+          <div className="flex items-center justify-between p-2">
+             <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
+             <SidebarTrigger className="group-data-[collapsible=icon]:hidden" />
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarMenu>
+            {navItems.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <Link href={item.href} legacyBehavior passHref>
+                  <SidebarMenuButton
+                    isActive={pathname === item.href}
+                    tooltip={{ children: item.label, side: 'right', align: 'center' }}
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </Link>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarContent>
+        <Separator className="my-2" />
+         <div className="p-2 mt-auto">
+            <Link href="/" legacyBehavior passHref>
+                 <SidebarMenuButton tooltip={{children: "התנתקות", side: 'right', align: 'center'}}>
+                    <LogOut className="h-5 w-5" />
+                    <span>התנתקות</span>
+                </SidebarMenuButton>
+            </Link>
+        </div>
+      </Sidebar>
+      <SidebarInset className="bg-background">
+        <main className="p-4 md:p-6 h-full overflow-auto">
+          {children}
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
