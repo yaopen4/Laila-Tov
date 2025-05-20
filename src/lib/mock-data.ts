@@ -197,6 +197,12 @@ export const deleteSleepRecord = (babyId: string, recordId: string): boolean => 
   return true;
 };
 
+export const deleteBabyPermanently = (babyId: string): boolean => {
+  const initialLength = mockBabies.length;
+  mockBabies = mockBabies.filter(baby => baby.id !== babyId);
+  return mockBabies.length < initialLength;
+};
+
 
 // Export type for form data if it's different or more specific than Baby
 export type AddBabyFormData = Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>;

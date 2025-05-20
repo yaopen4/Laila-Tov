@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Baby } from '@/lib/mock-data';
-import { getArchivedBabies, unarchiveBaby } from '@/lib/mock-data';
+import { getArchivedBabies, unarchiveBaby, deleteBabyPermanently } from '@/lib/mock-data';
 import {
   Table,
   TableBody,
@@ -15,19 +15,31 @@ import {
 } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArchiveRestore, Inbox } from 'lucide-react';
+import { ArchiveRestore, Inbox, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 import Link from 'next/link';
-// Need to import Card and CardContent for the table wrapper
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 
 export default function ArchivePage() {
   const [archivedBabies, setArchivedBabies] = useState<Baby[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const [babyToDelete, setBabyToDelete] = useState<Baby | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const fetchArchivedBabies = useCallback(() => {
     setIsLoading(true);
@@ -56,6 +68,30 @@ export default function ArchivePage() {
         variant: "destructive",
       });
     }
+  };
+
+  const openDeleteDialog = (baby: Baby) => {
+    setBabyToDelete(baby);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteBaby = () => {
+    if (!babyToDelete) return;
+    if (deleteBabyPermanently(babyToDelete.id)) {
+      toast({
+        title: "תינוק נמחק לצמיתות",
+        description: `התינוק ${babyToDelete.name} ${babyToDelete.familyName} נמחק מהמערכת.`,
+      });
+      fetchArchivedBabies(); // Refresh list
+    } else {
+      toast({
+        title: "שגיאה במחיקה",
+        description: `לא ניתן היה למחוק את ${babyToDelete.name} ${babyToDelete.familyName} לצמיתות.`,
+        variant: "destructive",
+      });
+    }
+    setIsDeleteDialogOpen(false);
+    setBabyToDelete(null);
   };
 
   if (isLoading) {
@@ -112,7 +148,7 @@ export default function ArchivePage() {
                     <TableCell>
                       {baby.dateArchived ? format(new Date(baby.dateArchived), "PPP HH:mm", { locale: he }) : 'לא זמין'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right space-x-2 rtl:space-x-reverse">
                       <Button
                         variant="outline"
                         size="sm"
@@ -121,6 +157,14 @@ export default function ArchivePage() {
                         <ArchiveRestore className="me-2 h-4 w-4" />
                         הוצא מארכיון
                       </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => openDeleteDialog(baby)}
+                      >
+                        <Trash2 className="me-2 h-4 w-4" />
+                        מחק לצמיתות
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -128,6 +172,25 @@ export default function ArchivePage() {
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {babyToDelete && (
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>אישור מחיקה לצמיתות</AlertDialogTitle>
+              <AlertDialogDescription>
+                האם אתה בטוח שברצונך למחוק את {babyToDelete.name} {babyToDelete.familyName} לצמיתות?
+                <br />
+                <strong>פעולה זו אינה ניתנת לשחזור.</strong> כל הנתונים המשויכים לתינוק זה יימחקו.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setBabyToDelete(null); }}>ביטול</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteBaby}>מחק לצמיתות</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );
