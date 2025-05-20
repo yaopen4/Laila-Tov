@@ -20,6 +20,9 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 import Link from 'next/link';
+// Need to import Card and CardContent for the table wrapper
+import { Card, CardContent } from "@/components/ui/card";
+
 
 export default function ArchivePage() {
   const [archivedBabies, setArchivedBabies] = useState<Baby[]>([]);
@@ -99,7 +102,6 @@ export default function ArchivePage() {
                 <TableRow>
                   <TableHead className="w-[200px]">שם מלא</TableHead>
                   <TableHead>תאריך העברה לארכיון</TableHead>
-                  <TableHead>עודכן לאחרונה</TableHead>
                   <TableHead className="text-right">פעולות</TableHead>
                 </TableRow>
               </TableHeader>
@@ -109,9 +111,6 @@ export default function ArchivePage() {
                     <TableCell className="font-medium">{baby.name} {baby.familyName}</TableCell>
                     <TableCell>
                       {baby.dateArchived ? format(new Date(baby.dateArchived), "PPP HH:mm", { locale: he }) : 'לא זמין'}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(baby.lastModified), "PPP HH:mm", { locale: he })}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -133,6 +132,3 @@ export default function ArchivePage() {
     </div>
   );
 }
-// Need to import Card and CardContent for the table wrapper
-import { Card, CardContent } from "@/components/ui/card";
-
