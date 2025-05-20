@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
 import { Button } from "@/components/ui/button";
-import { LogOut, UserPlus, Users, Archive, FileText } from 'lucide-react';
+import { LogOut, UserPlus, Users, Archive, FileText, FileSpreadsheet } from 'lucide-react'; // Added FileSpreadsheet
 import { Separator } from '@/components/ui/separator';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
@@ -60,7 +60,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
                 onClick={() => alert('ייצוא CSV (לא מיושם)')} // Placeholder action
                 tooltip={{ children: 'ייצוא CSV', side: 'right', align: 'center' }}
               >
-                <FileText className="h-5 w-5" />
+                <FileSpreadsheet className="h-5 w-5" /> {/* Changed icon */}
                 <span>ייצוא CSV</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -69,7 +69,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
                 onClick={() => alert('ייצוא PDF (לא מיושם)')} // Placeholder action
                 tooltip={{ children: 'ייצוא PDF', side: 'right', align: 'center' }}
               >
-                <FileText className="h-5 w-5" />
+                <FileText className="h-5 w-5" /> {/* Kept FileText for PDF */}
                 <span>ייצוא PDF</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
