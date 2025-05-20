@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,10 +20,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns"; // Changed from date-fns-jalali
-import { he } from 'date-fns/locale'; // For Hebrew locale with date-fns
+import { format } from "date-fns";
+import { he } from 'date-fns/locale';
 import { useToast } from "@/hooks/use-toast";
 import { CalendarIcon, PlusCircle, Send, Trash2, BedDouble, Timer, UserCircle2, Moon, Sunrise, Layers } from 'lucide-react';
+import type { SleepRecord } from "@/lib/mock-data"; // Import SleepRecord type
+import { useEffect } from "react";
 
 const sleepCycleSchema = z.object({
   bedtime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "פורמט שעה לא תקין (HH:MM)."}),
@@ -43,18 +46,59 @@ export type SleepRecordFormData = z.infer<typeof sleepRecordSchema>;
 interface SleepDataFormProps {
   babyName: string;
   onSubmitSuccess?: (data: SleepRecordFormData) => void;
+  initialData?: SleepRecord | null; // To pre-fill form for editing
+  onCancel?: () => void; // For cancel button in edit mode
+  submitButtonText?: string; // To customize submit button text
+  isDialog?: boolean; // To adjust layout if inside a dialog
 }
 
-export function SleepDataForm({ babyName, onSubmitSuccess }: SleepDataFormProps) {
+export function SleepDataForm({ babyName, onSubmitSuccess, initialData = null, onCancel, submitButtonText, isDialog = false }: SleepDataFormProps) {
   const { toast } = useToast();
   const form = useForm<SleepRecordFormData>({
     resolver: zodResolver(sleepRecordSchema),
-    defaultValues: {
-      date: new Date(),
-      stage: "",
-      sleepCycles: [{ bedtime: "", timeToSleep: "", whoPutToSleep: "", howFellAsleep: "", wakeTime: "" }],
-    },
+    defaultValues: initialData
+      ? {
+          date: new Date(initialData.date),
+          stage: initialData.stage,
+          sleepCycles: initialData.sleepCycles.map(sc => ({
+            bedtime: sc.bedtime,
+            timeToSleep: sc.timeToSleep,
+            whoPutToSleep: sc.whoPutToSleep,
+            howFellAsleep: sc.howFellAsleep,
+            wakeTime: sc.wakeTime,
+          })),
+        }
+      : {
+          date: new Date(),
+          stage: "",
+          sleepCycles: [{ bedtime: "", timeToSleep: "", whoPutToSleep: "", howFellAsleep: "", wakeTime: "" }],
+        },
   });
+
+  useEffect(() => {
+    if (initialData) {
+      form.reset({
+        date: new Date(initialData.date),
+        stage: initialData.stage,
+        sleepCycles: initialData.sleepCycles.map(sc => ({
+          bedtime: sc.bedtime,
+          timeToSleep: sc.timeToSleep,
+          whoPutToSleep: sc.whoPutToSleep,
+          howFellAsleep: sc.howFellAsleep,
+          wakeTime: sc.wakeTime,
+        })),
+      });
+    } else {
+      // Reset to default for new entries if initialData becomes null (e.g. dialog closes)
+      // This ensures the form is clean if reused without initialData after being used with it.
+       form.reset({
+        date: new Date(),
+        stage: "",
+        sleepCycles: [{ bedtime: "", timeToSleep: "", whoPutToSleep: "", howFellAsleep: "", wakeTime: "" }],
+      });
+    }
+  }, [initialData, form.reset]);
+
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -65,23 +109,31 @@ export function SleepDataForm({ babyName, onSubmitSuccess }: SleepDataFormProps)
     console.log("Sleep data:", values);
     // Here you would typically send data to Firebase
     toast({
-      title: "נתוני שינה נשמרו!",
-      description: `הנתונים עבור ${babyName} נשלחו בהצלחה.`,
+      title: initialData ? "נתוני שינה עודכנו!" : "נתוני שינה נשמרו!",
+      description: `הנתונים עבור ${babyName} ${initialData ? 'עודכנו' : 'נשלחו'} בהצלחה.`,
     });
     if (onSubmitSuccess) onSubmitSuccess(values);
-    // form.reset(); // Optionally reset form
+    if (!initialData) { // Only reset fully for new entries, not for edits that might close dialog after
+        // form.reset(); // User might want to keep data in form, or it's handled by dialog closure.
+    }
   }
+  
+  const CardComponent = isDialog ? 'div' : Card; // Use div if in dialog, Card otherwise
+  const cardComponentProps = isDialog ? {} : { className: "w-full max-w-2xl mx-auto shadow-xl" };
+
 
   return (
-    <Card className="w-full max-w-2xl mx-auto shadow-xl">
-      <CardHeader>
-        <CardTitle className="text-2xl flex items-center gap-2">
-          <BedDouble className="h-6 w-6 text-primary" />
-          הזנת נתוני שינה עבור {babyName}
-        </CardTitle>
-        <CardDescription>נא למלא את כל הפרטים הרלוונטיים.</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <CardComponent {...cardComponentProps}>
+      {!isDialog && (
+        <CardHeader>
+          <CardTitle className="text-2xl flex items-center gap-2">
+            <BedDouble className="h-6 w-6 text-primary" />
+            הזנת נתוני שינה עבור {babyName}
+          </CardTitle>
+          <CardDescription>נא למלא את כל הפרטים הרלוונטיים.</CardDescription>
+        </CardHeader>
+      )}
+      <CardContent className={isDialog ? "pt-0" : ""}>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -237,14 +289,20 @@ export function SleepDataForm({ babyName, onSubmitSuccess }: SleepDataFormProps)
                 הוסף מחזור שינה נוסף
               </Button>
             </div>
-
-            <Button type="submit" className="w-full md:w-auto text-lg py-6">
-              <Send className="me-2 h-5 w-5" />
-              שמור נתוני שינה
-            </Button>
+            <div className={cn("flex gap-2", isDialog ? "justify-end" : "")}>
+              {onCancel && (
+                 <Button type="button" variant="outline" onClick={onCancel} className="w-full md:w-auto">
+                    ביטול
+                 </Button>
+              )}
+              <Button type="submit" className={cn("w-full md:w-auto", !isDialog && "text-lg py-6")}>
+                <Send className="me-2 h-5 w-5" />
+                {submitButtonText || "שמור נתוני שינה"}
+              </Button>
+            </div>
           </form>
         </Form>
       </CardContent>
-    </Card>
+    </CardComponent>
   );
 }

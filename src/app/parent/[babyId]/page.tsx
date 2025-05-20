@@ -1,36 +1,51 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { Baby, SleepRecord, SleepRecordFormData } from '@/lib/mock-data';
-import { getBabyByParentUsername } from '@/lib/mock-data'; // Using parentUsername as babyId for mock
+import { getBabyByParentUsername } from '@/lib/mock-data'; 
 import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, History, Edit3, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { format } from "date-fns"; // Changed from date-fns-jalali
+import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 import Link from 'next/link';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+
 
 export default function ParentBabyPage() {
   const params = useParams();
-  const babyId = params.babyId as string; // This is parentUsername in mock setup
+  const babyId = params.babyId as string; 
   const [baby, setBaby] = useState<Baby | null>(null);
   const [latestRecord, setLatestRecord] = useState<SleepRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [recordToEdit, setRecordToEdit] = useState<SleepRecord | null>(null);
 
   useEffect(() => {
     if (babyId) {
-      // Simulate fetching baby data
       setIsLoading(true);
       setTimeout(() => {
         const foundBaby = getBabyByParentUsername(babyId);
         if (foundBaby) {
           setBaby(foundBaby);
           if (foundBaby.sleepRecords && foundBaby.sleepRecords.length > 0) {
-             // Sort records by date descending to get the latest
             const sortedRecords = [...foundBaby.sleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             setLatestRecord(sortedRecords[0]);
           }
@@ -40,23 +55,72 @@ export default function ParentBabyPage() {
     }
   }, [babyId]);
 
-  const handleFormSubmit = (data: SleepRecordFormData) => {
-    // Mock: update latest record for display
-    // In a real app, this would trigger a re-fetch or update from Firestore
+  const handleAddNewFormSubmit = (data: SleepRecordFormData) => {
     const newRecord: SleepRecord = {
       id: `new-${Date.now()}`,
-      date: format(data.date, "yyyy-MM-dd"), // Keep standard format for storage
+      date: format(data.date, "yyyy-MM-dd"),
       stage: data.stage,
-      sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${index}`}))
+      sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${Date.now()}-${index}`})) // Ensure new IDs for new cycles
     };
-    setLatestRecord(newRecord);
+    setLatestRecord(newRecord); // New record becomes the latest
     if (baby) {
+      const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])];
       setBaby(prevBaby => ({
         ...prevBaby!,
-        sleepRecords: [newRecord, ...(prevBaby?.sleepRecords || [])]
+        sleepRecords: updatedSleepRecords
       }));
     }
   };
+
+  const handleEditRecordClick = (record: SleepRecord) => {
+    setRecordToEdit(record);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditFormSubmit = (data: SleepRecordFormData) => {
+    if (!recordToEdit || !baby) return;
+
+    const updatedRecord: SleepRecord = {
+      ...recordToEdit,
+      id: recordToEdit.id, // Keep original record ID
+      date: format(data.date, "yyyy-MM-dd"),
+      stage: data.stage,
+      sleepCycles: data.sleepCycles.map((sc, index) => ({
+        id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`, // Try to preserve ID, or new
+        bedtime: sc.bedtime,
+        timeToSleep: sc.timeToSleep,
+        whoPutToSleep: sc.whoPutToSleep,
+        howFellAsleep: sc.howFellAsleep,
+        wakeTime: sc.wakeTime,
+      })),
+    };
+    
+    const updatedSleepRecords = baby.sleepRecords?.map(sr =>
+      sr.id === recordToEdit.id ? updatedRecord : sr
+    ) || [updatedRecord];
+    
+    setBaby(prevBaby => ({
+      ...prevBaby!,
+      sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Re-sort after update
+    }));
+
+    // Update latestRecord if the edited one is still the latest (by date) or was the latest
+     const sortedRecords = [...updatedSleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+     if (sortedRecords.length > 0) {
+        setLatestRecord(sortedRecords[0]);
+     }
+
+
+    setIsEditDialogOpen(false);
+    setRecordToEdit(null);
+    // Toast is handled by SleepDataForm itself now
+  };
+  
+  const handleCancelEdit = () => {
+    setIsEditDialogOpen(false);
+    setRecordToEdit(null);
+  };
+
 
   if (isLoading) {
     return (
@@ -92,7 +156,7 @@ export default function ParentBabyPage() {
         <p className="text-muted-foreground">ממשק הורים למעקב שינה</p>
       </header>
       
-      <SleepDataForm babyName={baby.name} onSubmitSuccess={handleFormSubmit} />
+      <SleepDataForm babyName={baby.name} onSubmitSuccess={handleAddNewFormSubmit} />
 
       <CoachRecommendationsDisplay notes={baby.coachNotes} />
 
@@ -117,17 +181,40 @@ export default function ParentBabyPage() {
               </div>
             ))}
             <div className="flex gap-2 mt-4">
-              <Button variant="outline" size="sm" disabled> {/* Edit/Delete are placeholders */}
-                <Edit3 className="me-2 h-4 w-4" />
-                ערוך רשומה
-              </Button>
+              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
+                    <Edit3 className="me-2 h-4 w-4" />
+                    ערוך רשומה
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[625px]">
+                  <DialogHeader>
+                    <DialogTitle>עריכת רשומת שינה</DialogTitle>
+                    <DialogDescription>
+                      עדכן את פרטי השינה עבור {baby.name} לתאריך {recordToEdit ? format(new Date(recordToEdit.date), "PPP", { locale: he }) : ''}.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {recordToEdit && babyName && ( // Ensure recordToEdit and babyName are available
+                    <SleepDataForm
+                      babyName={baby.name}
+                      initialData={recordToEdit}
+                      onSubmitSuccess={handleEditFormSubmit}
+                      onCancel={handleCancelEdit}
+                      submitButtonText="עדכן רשומה"
+                      isDialog={true}
+                    />
+                  )}
+                   {/* DialogFooter can be removed if buttons are inside SleepDataForm */}
+                </DialogContent>
+              </Dialog>
               <Button variant="destructive" size="sm" disabled>
                 <Trash2 className="me-2 h-4 w-4" />
                 מחק רשומה
               </Button>
             </div>
              <p className="text-xs text-muted-foreground mt-2">
-              * יכולת עריכה ומחיקה תהיה זמינה בגרסאות עתידיות. להצגת היסטוריה מלאה, יש לפנות למאמן/ת.
+              * יכולת מחיקה תהיה זמינה בגרסאות עתידיות. להצגת היסטוריה מלאה, יש לפנות למאמן/ת.
             </p>
           </CardContent>
         </Card>
