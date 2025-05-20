@@ -4,13 +4,15 @@
 import type { FC } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, FileText } from 'lucide-react';
+import { Search, FileSpreadsheet, FileText } from 'lucide-react'; // Added FileSpreadsheet
 
 interface DashboardHeaderProps {
   onSearch: (term: string) => void;
+  onExportCSV: () => void;
+  onExportPDF: () => void;
 }
 
-const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch }) => {
+const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onExportCSV, onExportPDF }) => {
   return (
     <div className="mb-6">
       <h1 className="text-3xl font-bold mb-4 text-primary">לוח בקרה למאמן/ת</h1>
@@ -24,7 +26,16 @@ const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch }) => {
           />
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         </div>
-        {/* Export buttons removed from here */}
+        <div className="flex gap-2">
+            <Button variant="outline" onClick={onExportCSV}>
+                <FileSpreadsheet className="me-2 h-4 w-4" />
+                ייצוא CSV
+            </Button>
+            <Button variant="outline" onClick={onExportPDF}>
+                <FileText className="me-2 h-4 w-4" />
+                ייצוא PDF
+            </Button>
+        </div>
       </div>
     </div>
   );
