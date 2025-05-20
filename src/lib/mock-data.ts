@@ -172,6 +172,31 @@ export const getArchivedBabies = (): Baby[] => {
   return mockBabies.filter(baby => baby.isArchived);
 };
 
+export const deleteSleepRecord = (babyId: string, recordId: string): boolean => {
+  const babyIndex = mockBabies.findIndex(b => b.id === babyId);
+  if (babyIndex === -1) {
+    console.error("Baby not found for deletion:", babyId);
+    return false;
+  }
+
+  const baby = mockBabies[babyIndex];
+  if (!baby.sleepRecords) {
+    console.error("Baby has no sleep records:", babyId);
+    return false;
+  }
+
+  const recordIndex = baby.sleepRecords.findIndex(sr => sr.id === recordId);
+  if (recordIndex === -1) {
+    console.error("Sleep record not found for deletion:", recordId, "for baby:", babyId);
+    return false;
+  }
+
+  baby.sleepRecords.splice(recordIndex, 1);
+  baby.lastModified = getCurrentISODate();
+  mockBabies[babyIndex] = { ...baby }; // Ensure the main array is updated with the modified baby object
+  return true;
+};
+
 
 // Export type for form data if it's different or more specific than Baby
 export type AddBabyFormData = Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>;

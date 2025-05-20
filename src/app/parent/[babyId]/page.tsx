@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { Baby, SleepRecord, SleepRecordFormData } from '@/lib/mock-data';
-import { getBabyByParentUsername } from '@/lib/mock-data'; 
+import { getBabyByParentUsername, deleteSleepRecord } from '@/lib/mock-data'; 
 import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
@@ -24,6 +24,17 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -38,6 +49,10 @@ export default function ParentBabyPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [recordToEdit, setRecordToEdit] = useState<SleepRecord | null>(null);
 
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
+
+
   useEffect(() => {
     if (babyId) {
       setIsLoading(true);
@@ -48,6 +63,8 @@ export default function ParentBabyPage() {
           if (foundBaby.sleepRecords && foundBaby.sleepRecords.length > 0) {
             const sortedRecords = [...foundBaby.sleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             setLatestRecord(sortedRecords[0]);
+          } else {
+            setLatestRecord(null);
           }
         }
         setIsLoading(false);
@@ -55,21 +72,31 @@ export default function ParentBabyPage() {
     }
   }, [babyId]);
 
+  const refreshLatestRecord = (updatedBaby: Baby) => {
+    if (updatedBaby.sleepRecords && updatedBaby.sleepRecords.length > 0) {
+      const sortedRecords = [...updatedBaby.sleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setLatestRecord(sortedRecords[0]);
+    } else {
+      setLatestRecord(null);
+    }
+  };
+
   const handleAddNewFormSubmit = (data: SleepRecordFormData) => {
+    if (!baby) return;
     const newRecord: SleepRecord = {
-      id: `new-${Date.now()}`,
+      id: `new-${Date.now()}`, // Ensure new ID for new record
       date: format(data.date, "yyyy-MM-dd"),
       stage: data.stage,
-      sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${Date.now()}-${index}`})) // Ensure new IDs for new cycles
+      sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${Date.now()}-${index}`}))
     };
-    setLatestRecord(newRecord); // New record becomes the latest
-    if (baby) {
-      const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])];
-      setBaby(prevBaby => ({
-        ...prevBaby!,
-        sleepRecords: updatedSleepRecords
-      }));
-    }
+    
+    const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])];
+    const updatedBaby = {
+        ...baby,
+        sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    };
+    setBaby(updatedBaby);
+    refreshLatestRecord(updatedBaby);
   };
 
   const handleEditRecordClick = (record: SleepRecord) => {
@@ -82,11 +109,11 @@ export default function ParentBabyPage() {
 
     const updatedRecord: SleepRecord = {
       ...recordToEdit,
-      id: recordToEdit.id, // Keep original record ID
+      id: recordToEdit.id, 
       date: format(data.date, "yyyy-MM-dd"),
       stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({
-        id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`, // Try to preserve ID, or new
+        id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`, 
         bedtime: sc.bedtime,
         timeToSleep: sc.timeToSleep,
         whoPutToSleep: sc.whoPutToSleep,
@@ -99,26 +126,49 @@ export default function ParentBabyPage() {
       sr.id === recordToEdit.id ? updatedRecord : sr
     ) || [updatedRecord];
     
-    setBaby(prevBaby => ({
-      ...prevBaby!,
-      sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Re-sort after update
-    }));
-
-    // Update latestRecord if the edited one is still the latest (by date) or was the latest
-     const sortedRecords = [...updatedSleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-     if (sortedRecords.length > 0) {
-        setLatestRecord(sortedRecords[0]);
-     }
-
+    const updatedBaby = {
+        ...baby,
+        sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    };
+    setBaby(updatedBaby);
+    refreshLatestRecord(updatedBaby);
 
     setIsEditDialogOpen(false);
     setRecordToEdit(null);
-    // Toast is handled by SleepDataForm itself now
   };
   
   const handleCancelEdit = () => {
     setIsEditDialogOpen(false);
     setRecordToEdit(null);
+  };
+
+  const handleDeleteRecordClick = (recordId: string) => {
+    setRecordToDeleteId(recordId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteRecord = () => {
+    if (!baby || !recordToDeleteId) return;
+
+    const success = deleteSleepRecord(baby.id, recordToDeleteId);
+    if (success) {
+      const updatedRecords = baby.sleepRecords?.filter(sr => sr.id !== recordToDeleteId) || [];
+      const updatedBaby = { ...baby, sleepRecords: updatedRecords };
+      setBaby(updatedBaby);
+      refreshLatestRecord(updatedBaby);
+      toast({
+        title: "רשומה נמחקה",
+        description: "רשומת השינה נמחקה בהצלחה.",
+      });
+    } else {
+      toast({
+        title: "שגיאה במחיקה",
+        description: "לא ניתן היה למחוק את רשומת השינה.",
+        variant: "destructive",
+      });
+    }
+    setIsDeleteDialogOpen(false);
+    setRecordToDeleteId(null);
   };
 
 
@@ -195,7 +245,7 @@ export default function ParentBabyPage() {
                       עדכן את פרטי השינה עבור {baby.name} לתאריך {recordToEdit ? format(new Date(recordToEdit.date), "PPP", { locale: he }) : ''}.
                     </DialogDescription>
                   </DialogHeader>
-                  {recordToEdit && baby && ( // Ensure recordToEdit and baby are available
+                  {recordToEdit && baby && (
                     <SleepDataForm
                       babyName={baby.name}
                       initialData={recordToEdit}
@@ -205,17 +255,30 @@ export default function ParentBabyPage() {
                       isDialog={true}
                     />
                   )}
-                   {/* DialogFooter can be removed if buttons are inside SleepDataForm */}
                 </DialogContent>
               </Dialog>
-              <Button variant="destructive" size="sm" disabled>
-                <Trash2 className="me-2 h-4 w-4" />
-                מחק רשומה
-              </Button>
+              <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" onClick={() => latestRecord && handleDeleteRecordClick(latestRecord.id)}>
+                    <Trash2 className="me-2 h-4 w-4" />
+                    מחק רשומה
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>אישור מחיקת רשומה</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      האם אתה בטוח שברצונך למחוק את רשומת השינה מתאריך {latestRecord ? format(new Date(latestRecord.date), "PPP", { locale: he }) : ''}?
+                      לא ניתן לשחזר פעולה זו.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>ביטול</AlertDialogCancel>
+                    <AlertDialogAction onClick={confirmDeleteRecord}>מחק</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
-             <p className="text-xs text-muted-foreground mt-2">
-              * יכולת מחיקה תהיה זמינה בגרסאות עתידיות.
-            </p>
           </CardContent>
         </Card>
       )}
