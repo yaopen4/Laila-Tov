@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, UserPlus, Users } from 'lucide-react';
+import { LogOut, UserPlus, Users } from 'lucide-react'; // Removed LayoutDashboard as it wasn't used
 import { Separator } from '@/components/ui/separator';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
@@ -29,7 +29,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen>
-      <Sidebar ScollableArea={undefined} collapsible="icon">
+      <Sidebar collapsible="icon"> {/* Removed ScollableArea={undefined} */}
         <SidebarHeader>
           <div className="flex items-center justify-between p-2">
              <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
