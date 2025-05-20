@@ -45,7 +45,7 @@ export default function CoachDashboardPage() {
   };
 
   const handleExportCSV = () => {
-    const babiesToExport = getActiveBabies(); // Use the unfiltered list for export
+    const babiesToExport = getActiveBabies(); 
     if (babiesToExport.length === 0) {
       alert('אין תינוקות פעילים לייצוא.');
       return;
@@ -129,8 +129,14 @@ export default function CoachDashboardPage() {
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      
+      // Delay cleanup to ensure download initiation
+      setTimeout(() => {
+        if (link.parentElement) {
+            document.body.removeChild(link);
+        }
+        URL.revokeObjectURL(url);
+      }, 100); 
     });
 
     if (babiesToExport.length > 0) {
@@ -178,3 +184,4 @@ export default function CoachDashboardPage() {
     </div>
   );
 }
+
