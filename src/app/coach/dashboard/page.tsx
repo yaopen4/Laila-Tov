@@ -7,6 +7,8 @@ import { getActiveBabies } from '@/lib/mock-data';
 import DashboardHeader from '@/components/coach/dashboard-header';
 import BabyList from '@/components/coach/baby-list';
 import { Skeleton } from '@/components/ui/skeleton';
+import { format } from "date-fns";
+import { he } from 'date-fns/locale';
 
 export default function CoachDashboardPage() {
   const [babies, setBabies] = useState<Baby[]>([]);
@@ -145,7 +147,141 @@ export default function CoachDashboardPage() {
   };
 
   const handleExportPDF = () => {
-    alert('ייצוא PDF (עדיין לא מיושם במלואו)');
+    const babiesToExport = getActiveBabies();
+    if (babiesToExport.length === 0) {
+      alert('אין תינוקות פעילים לייצוא ל-PDF.');
+      return;
+    }
+
+    let htmlContent = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>נתוני תינוקות - לילה טוב</title>
+          <style>
+            @media print {
+              body { 
+                font-family: Arial, sans-serif; 
+                direction: rtl;
+              }
+              .page-break { 
+                page-break-after: always; 
+                border-bottom: 1px dashed #ccc;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+              }
+              .baby-section:last-child .page-break {
+                page-break-after: auto;
+                border-bottom: none;
+              }
+              table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-top: 10px; 
+                margin-bottom: 20px;
+              }
+              th, td { 
+                border: 1px solid black; 
+                padding: 8px; 
+                text-align: right; 
+              }
+              th { 
+                background-color: #f2f2f2; 
+              }
+              h1, h2, h3, h4 { 
+                text-align: right; 
+                color: #333;
+              }
+              h1 { font-size: 24px; margin-bottom: 5px;}
+              h2 { font-size: 18px; margin-bottom: 3px; color: #555;}
+              h3 { font-size: 16px; margin-bottom: 3px; color: #555;}
+              h4 { font-size: 14px; margin-top: 15px; margin-bottom: 5px; color: #777;}
+              p { text-align: right; }
+              .no-records { font-style: italic; color: #888; }
+            }
+          </style>
+        </head>
+        <body>
+    `;
+
+    babiesToExport.forEach(baby => {
+      htmlContent += `
+        <div class="baby-section page-break">
+          <h1>תינוק: ${baby.name} ${baby.familyName}</h1>
+          <h2>גיל: ${baby.age} חודשים</h2>
+          <h3>פרטי הורים: אם - ${baby.motherName}, אב - ${baby.fatherName}</h3>
+          ${baby.description ? `<p><strong>תיאור:</strong> ${baby.description}</p>` : ''}
+          ${baby.coachNotes ? `<p><strong>הערות מאמן/ת:</strong> ${baby.coachNotes}</p>` : ''}
+      `;
+
+      if (baby.sleepRecords && baby.sleepRecords.length > 0) {
+        baby.sleepRecords.forEach(record => {
+          htmlContent += `<h4>רשומת שינה: ${format(new Date(record.date), "PPP", { locale: he })} (שלב: ${record.stage})</h4>`;
+          if (record.sleepCycles && record.sleepCycles.length > 0) {
+            htmlContent += `
+              <table>
+                <thead>
+                  <tr>
+                    <th>מחזור</th>
+                    <th>שעת השכבה</th>
+                    <th>זמן להירדם</th>
+                    <th>מי הרדים/ה</th>
+                    <th>איך נרדמ/ה</th>
+                    <th>שעת יקיצה</th>
+                  </tr>
+                </thead>
+                <tbody>
+            `;
+            record.sleepCycles.forEach((cycle, index) => {
+              htmlContent += `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>${cycle.bedtime}</td>
+                  <td>${cycle.timeToSleep}</td>
+                  <td>${cycle.whoPutToSleep}</td>
+                  <td>${cycle.howFellAsleep}</td>
+                  <td>${cycle.wakeTime || '-'}</td>
+                </tr>
+              `;
+            });
+            htmlContent += `</tbody></table>`;
+          } else {
+            htmlContent += `<p class="no-records">אין מחזורי שינה מתועדים לרשומה זו.</p>`;
+          }
+        });
+      } else {
+        htmlContent += `<p class="no-records">אין נתוני שינה זמינים לתינוק זה.</p>`;
+      }
+      htmlContent += `</div>`; // Close baby-section
+    });
+
+    htmlContent += `</body></html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0';
+    document.body.appendChild(iframe);
+
+    iframe.srcdoc = htmlContent;
+    iframe.onload = function() {
+      try {
+        iframe.contentWindow?.focus(); // Required for some browsers
+        iframe.contentWindow?.print();
+      } catch (error) {
+        console.error("Error during print:", error);
+        alert("אירעה שגיאה בעת ניסיון הפקת ה-PDF. נסה שוב או בדוק את הגדרות הדפדפן.");
+      } finally {
+        // Delay removal to allow print dialog to fully process
+        setTimeout(() => {
+          if (iframe.parentElement) {
+            document.body.removeChild(iframe);
+          }
+        }, 500);
+      }
+    };
   };
 
 
