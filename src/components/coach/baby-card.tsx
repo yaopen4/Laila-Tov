@@ -1,16 +1,21 @@
+
 import type { FC } from 'react';
 import Link from 'next/link';
 import type { Baby } from '@/lib/mock-data';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { User, Edit3, Eye } from 'lucide-react';
+import { format } from "date-fns";
+import { he } from 'date-fns/locale';
 
 interface BabyCardProps {
   baby: Baby;
 }
 
 const BabyCard: FC<BabyCardProps> = ({ baby }) => {
-  const latestSleepDate = baby.sleepRecords?.[0]?.date || "אין נתונים";
+  const latestSleepDate = baby.sleepRecords && baby.sleepRecords.length > 0 
+    ? format(new Date(baby.sleepRecords[0].date), "PPP", { locale: he }) 
+    : "אין נתונים";
   
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -38,11 +43,12 @@ const BabyCard: FC<BabyCardProps> = ({ baby }) => {
             צפה בנתונים
           </Button>
         </Link>
-        {/* Placeholder for edit functionality */}
-        <Button variant="ghost" size="sm">
-          <Edit3 className="me-2 h-4 w-4" />
-          ערוך
-        </Button>
+        <Link href={`/coach/edit-baby/${baby.id}`} passHref legacyBehavior>
+          <Button variant="default" size="sm">
+            <Edit3 className="me-2 h-4 w-4" />
+            ערוך
+          </Button>
+        </Link>
       </CardFooter>
     </Card>
   );

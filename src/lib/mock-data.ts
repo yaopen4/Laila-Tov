@@ -1,3 +1,4 @@
+
 export interface SleepCycle {
   id: string;
   bedtime: string;
@@ -29,7 +30,7 @@ export interface Baby {
   coachNotes?: string;
 }
 
-export const mockBabies: Baby[] = [
+export let mockBabies: Baby[] = [
   {
     id: "1",
     name: "אורי",
@@ -94,3 +95,30 @@ export const mockBabies: Baby[] = [
 export const getBabyByParentUsername = (username: string): Baby | undefined => {
   return mockBabies.find(baby => baby.parentUsername === username);
 };
+
+export const getBabyById = (id: string): Baby | undefined => {
+  return mockBabies.find(baby => baby.id === id);
+};
+
+export const addBaby = (baby: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes'>): Baby => {
+  const newBaby: Baby = {
+    ...baby,
+    id: (mockBabies.length + 1).toString(), // Simple ID generation
+    sleepRecords: [],
+    coachNotes: "",
+  };
+  mockBabies.push(newBaby);
+  return newBaby;
+};
+
+export const updateBaby = (updatedBaby: Baby): boolean => {
+  const index = mockBabies.findIndex(baby => baby.id === updatedBaby.id);
+  if (index !== -1) {
+    mockBabies[index] = { ...mockBabies[index], ...updatedBaby };
+    return true;
+  }
+  return false;
+};
+
+// Export type for form data if it's different or more specific than Baby
+export type AddBabyFormData = Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes'>;

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,7 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Edit3 } from "lucide-react";
+import type { Baby } from "@/lib/mock-data";
+import { useEffect } from "react";
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "שם פרטי חייב להכיל לפחות 2 תווים." }),
@@ -31,39 +34,69 @@ const formSchema = z.object({
   parentUsername: z.string().min(3, { message: "שם משתמש להורים חייב להכיל לפחות 3 תווים." }),
 });
 
-export function AddBabyForm() {
+export type BabyFormData = z.infer<typeof formSchema>;
+
+interface AddBabyFormProps {
+  initialData?: Partial<Baby>; // Use Partial<Baby> or a specific EditBabyFormData type
+  isEditMode?: boolean;
+  onSubmitProp: (values: BabyFormData, id?: string) => void; // Pass id for updates
+}
+
+export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: AddBabyFormProps) {
   const { toast } = useToast();
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<BabyFormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
-      familyName: "",
-      age: 0,
-      motherName: "",
-      fatherName: "",
-      siblingsCount: 0,
-      siblingsNames: "",
-      description: "",
-      parentUsername: "",
+      name: initialData?.name || "",
+      familyName: initialData?.familyName || "",
+      age: initialData?.age || 0,
+      motherName: initialData?.motherName || "",
+      fatherName: initialData?.fatherName || "",
+      siblingsCount: initialData?.siblingsCount || 0,
+      siblingsNames: initialData?.siblingsNames || "",
+      description: initialData?.description || "",
+      parentUsername: initialData?.parentUsername || "",
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log("New baby data:", values);
-    // Here you would typically send data to Firebase
+  useEffect(() => {
+    if (initialData) {
+      form.reset({
+        name: initialData.name || "",
+        familyName: initialData.familyName || "",
+        age: initialData.age || 0,
+        motherName: initialData.motherName || "",
+        fatherName: initialData.fatherName || "",
+        siblingsCount: initialData.siblingsCount || 0,
+        siblingsNames: initialData.siblingsNames || "",
+        description: initialData.description || "",
+        parentUsername: initialData.parentUsername || "",
+      });
+    }
+  }, [initialData, form]);
+
+  function onSubmit(values: BabyFormData) {
+    onSubmitProp(values, initialData?.id);
     toast({
-      title: "תינוק נוסף בהצלחה!",
-      description: `הפרופיל של ${values.name} ${values.familyName} נוצר.`,
+      title: isEditMode ? "פרטי תינוק עודכנו!" : "תינוק נוסף בהצלחה!",
+      description: isEditMode 
+        ? `הפרופיל של ${values.name} ${values.familyName} עודכן.`
+        : `הפרופיל של ${values.name} ${values.familyName} נוצר.`,
     });
-    form.reset();
+    if (!isEditMode) {
+      form.reset({ // Reset only if not in edit mode or if desired after edit
+        name: "", familyName: "", age: 0, motherName: "", fatherName: "",
+        siblingsCount: 0, siblingsNames: "", description: "", parentUsername: ""
+      });
+    }
   }
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-2xl flex items-center gap-2">
-          <UserPlus className="h-6 w-6 text-primary" />
-          הוספת תינוק חדש
+          {isEditMode ? <Edit3 className="h-6 w-6 text-primary" /> : <UserPlus className="h-6 w-6 text-primary" />}
+          {isEditMode ? `עריכת פרטי ${initialData?.name || 'תינוק'}` : "הוספת תינוק חדש"}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -116,10 +149,10 @@ export function AddBabyForm() {
                   <FormItem>
                     <FormLabel>שם משתמש להורים</FormLabel>
                     <FormControl>
-                      <Input placeholder="שם משתמש ייחודי" {...field} />
+                      <Input placeholder="שם משתמש ייחודי" {...field} disabled={isEditMode} />
                     </FormControl>
                     <FormDescription>
-                      הורים ישתמשו בזה להתחברות.
+                      {isEditMode ? "שם משתמש אינו ניתן לעריכה." : "הורים ישתמשו בזה להתחברות."}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -191,7 +224,9 @@ export function AddBabyForm() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full md:w-auto">הוסף תינוק</Button>
+            <Button type="submit" className="w-full md:w-auto">
+              {isEditMode ? "עדכן פרטי תינוק" : "הוסף תינוק"}
+            </Button>
           </form>
         </Form>
       </CardContent>
