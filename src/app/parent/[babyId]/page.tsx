@@ -195,7 +195,7 @@ export default function ParentBabyPage() {
                       עדכן את פרטי השינה עבור {baby.name} לתאריך {recordToEdit ? format(new Date(recordToEdit.date), "PPP", { locale: he }) : ''}.
                     </DialogDescription>
                   </DialogHeader>
-                  {recordToEdit && babyName && ( // Ensure recordToEdit and babyName are available
+                  {recordToEdit && baby && ( // Ensure recordToEdit and baby are available
                     <SleepDataForm
                       babyName={baby.name}
                       initialData={recordToEdit}
@@ -214,7 +214,7 @@ export default function ParentBabyPage() {
               </Button>
             </div>
              <p className="text-xs text-muted-foreground mt-2">
-              * יכולת מחיקה תהיה זמינה בגרסאות עתידיות. להצגת היסטוריה מלאה, יש לפנות למאמן/ת.
+              * יכולת מחיקה תהיה זמינה בגרסאות עתידיות.
             </p>
           </CardContent>
         </Card>
