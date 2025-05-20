@@ -32,7 +32,7 @@ const sleepCycleSchema = z.object({
   timeToSleep: z.string().min(1, { message: "שדה חובה." }),
   whoPutToSleep: z.string().min(1, { message: "שדה חובה." }),
   howFellAsleep: z.string().min(1, { message: "שדה חובה." }),
-  wakeTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "פורמט שעה לא תקין (HH:MM)."}).min(1, { message: "שדה חובה." }),
+  wakeTime: z.string().refine(val => val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { message: "פורמט שעה לא תקין (HH:MM), או השאר ריק." }),
 });
 
 const sleepRecordSchema = z.object({
