@@ -238,7 +238,7 @@ export default function ParentBabyPage() {
                     ערוך רשומה
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[625px]">
+                <DialogContent className="sm:max-w-[625px] max-h-[85vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>עריכת רשומת שינה</DialogTitle>
                     <DialogDescription>
