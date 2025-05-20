@@ -1,4 +1,6 @@
 
+import { format } from 'date-fns';
+
 export interface SleepCycle {
   id: string;
   bedtime: string;
@@ -28,7 +30,13 @@ export interface Baby {
   parentUsername: string;
   sleepRecords?: SleepRecord[];
   coachNotes?: string;
+  isArchived: boolean;
+  dateArchived?: string; // ISO Date string
+  lastModified: string; // ISO Date string
 }
+
+// Helper to get current ISO date string
+const getCurrentISODate = () => new Date().toISOString();
 
 export let mockBabies: Baby[] = [
   {
@@ -53,6 +61,8 @@ export let mockBabies: Baby[] = [
         ],
       },
     ],
+    isArchived: false,
+    lastModified: new Date(2024, 6, 20).toISOString(),
   },
   {
     id: "2",
@@ -76,6 +86,8 @@ export let mockBabies: Baby[] = [
         ],
       },
     ],
+    isArchived: false,
+    lastModified: new Date(2024, 6, 21).toISOString(),
   },
   {
     id: "3",
@@ -89,36 +101,83 @@ export let mockBabies: Baby[] = [
     parentUsername: "israel-family",
     description: "נרדם רק על הידיים.",
     coachNotes: "לעבוד על הרדמות עצמאית במיטה.",
+    isArchived: false,
+    lastModified: getCurrentISODate(),
   },
 ];
 
 export const getBabyByParentUsername = (username: string): Baby | undefined => {
-  return mockBabies.find(baby => baby.parentUsername === username);
+  return mockBabies.find(baby => baby.parentUsername === username && !baby.isArchived);
 };
 
 export const getBabyById = (id: string): Baby | undefined => {
+  // Allows fetching archived babies too for edit page or direct access
   return mockBabies.find(baby => baby.id === id);
 };
 
-export const addBaby = (baby: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes'>): Baby => {
+export const addBaby = (baby: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>): Baby => {
   const newBaby: Baby = {
     ...baby,
     id: (mockBabies.length + 1).toString(), // Simple ID generation
     sleepRecords: [],
     coachNotes: "",
+    isArchived: false,
+    lastModified: getCurrentISODate(),
   };
   mockBabies.push(newBaby);
   return newBaby;
 };
 
-export const updateBaby = (updatedBaby: Baby): boolean => {
-  const index = mockBabies.findIndex(baby => baby.id === updatedBaby.id);
+export const updateBaby = (updatedBabyData: Partial<Baby> & Pick<Baby, 'id'>): boolean => {
+  const index = mockBabies.findIndex(baby => baby.id === updatedBabyData.id);
   if (index !== -1) {
-    mockBabies[index] = { ...mockBabies[index], ...updatedBaby };
+    mockBabies[index] = { 
+        ...mockBabies[index], 
+        ...updatedBabyData, 
+        lastModified: getCurrentISODate() 
+    };
     return true;
   }
   return false;
 };
 
+
+export const archiveBaby = (babyId: string): boolean => {
+  const index = mockBabies.findIndex(baby => baby.id === babyId);
+  if (index !== -1) {
+    mockBabies[index].isArchived = true;
+    mockBabies[index].dateArchived = getCurrentISODate();
+    mockBabies[index].lastModified = getCurrentISODate();
+    return true;
+  }
+  return false;
+};
+
+export const unarchiveBaby = (babyId: string): boolean => {
+  const index = mockBabies.findIndex(baby => baby.id === babyId);
+  if (index !== -1) {
+    mockBabies[index].isArchived = false;
+    mockBabies[index].dateArchived = undefined;
+    mockBabies[index].lastModified = getCurrentISODate();
+    return true;
+  }
+  return false;
+};
+
+export const getActiveBabies = (): Baby[] => {
+  return mockBabies.filter(baby => !baby.isArchived);
+};
+
+export const getArchivedBabies = (): Baby[] => {
+  return mockBabies.filter(baby => baby.isArchived);
+};
+
+
 // Export type for form data if it's different or more specific than Baby
-export type AddBabyFormData = Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes'>;
+export type AddBabyFormData = Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>;
+
+// For sleep record form, doesn't include baby details
+export type SleepRecordFormData = Omit<SleepRecord, 'id' | 'sleepCycles'> & {
+  sleepCycles: Array<Omit<SleepCycle, 'id'>>;
+  date: Date; // Date object from calendar
+};

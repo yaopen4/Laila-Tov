@@ -1,8 +1,9 @@
+
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Baby } from '@/lib/mock-data';
-import { mockBabies } from '@/lib/mock-data';
+import { getActiveBabies } from '@/lib/mock-data';
 import DashboardHeader from '@/components/coach/dashboard-header';
 import BabyList from '@/components/coach/baby-list';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,14 +14,20 @@ export default function CoachDashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchAndSetBabies = useCallback(() => {
+    setIsLoading(true);
     // Simulate API call
     setTimeout(() => {
-      setBabies(mockBabies);
-      setFilteredBabies(mockBabies);
+      const activeBabies = getActiveBabies();
+      setBabies(activeBabies);
+      setFilteredBabies(activeBabies); // Initialize filtered list
       setIsLoading(false);
-    }, 1000);
+    }, 500);
   }, []);
+
+  useEffect(() => {
+    fetchAndSetBabies();
+  }, [fetchAndSetBabies]);
 
   useEffect(() => {
     const lowercasedFilter = searchTerm.toLowerCase();
@@ -35,6 +42,10 @@ export default function CoachDashboardPage() {
 
   const handleSearch = (term: string) => {
     setSearchTerm(term);
+  };
+
+  const handleBabyArchived = () => {
+    fetchAndSetBabies(); // Refetch active babies after one is archived
   };
 
   if (isLoading) {
@@ -60,7 +71,7 @@ export default function CoachDashboardPage() {
   return (
     <div className="h-full">
       <DashboardHeader onSearch={handleSearch} />
-      <BabyList babies={filteredBabies} />
+      <BabyList babies={filteredBabies} onBabyArchived={handleBabyArchived} />
       {/* Real-time update placeholder:
       Firestore listeners would update 'babies' state, re-filtering automatically.
       A toast notification could also appear for new data.

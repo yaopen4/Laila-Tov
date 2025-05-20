@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ReactNode } from 'react';
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
 import { Button } from "@/components/ui/button";
-import { LogOut, UserPlus, Users } from 'lucide-react'; // Removed LayoutDashboard as it wasn't used
+import { LogOut, UserPlus, Users, Archive } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
@@ -25,11 +26,12 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
   const navItems = [
     { href: "/coach/dashboard", label: "לוח בקרה", icon: Users },
     { href: "/coach/add-baby", label: "הוספת תינוק", icon: UserPlus },
+    { href: "/coach/archive", label: "ארכיון", icon: Archive },
   ];
 
   return (
     <SidebarProvider defaultOpen>
-      <Sidebar collapsible="icon"> {/* Removed ScollableArea={undefined} */}
+      <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center justify-between p-2">
              <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
