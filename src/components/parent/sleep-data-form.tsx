@@ -19,9 +19,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns-jalali"; // Using date-fns-jalali for Hebrew calendar, assuming it's available or similar.
-// If not, use date-fns and format for hebrew locale if supported, or simple text input.
-// For this example, we'll use date-fns standard format and note that a Hebrew specific formatter would be ideal.
+import { format } from "date-fns"; // Changed from date-fns-jalali
 import { he } from 'date-fns/locale'; // For Hebrew locale with date-fns
 import { useToast } from "@/hooks/use-toast";
 import { CalendarIcon, PlusCircle, Send, Trash2, BedDouble, Timer, UserCircle2, Moon, Sunrise, Layers } from 'lucide-react';

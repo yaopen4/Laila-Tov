@@ -10,7 +10,7 @@ import AppLogo from '@/components/shared/app-logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, History, Edit3, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { format } from "date-fns-jalali";
+import { format } from "date-fns"; // Changed from date-fns-jalali
 import { he } from 'date-fns/locale';
 import Link from 'next/link';
 
@@ -45,7 +45,7 @@ export default function ParentBabyPage() {
     // In a real app, this would trigger a re-fetch or update from Firestore
     const newRecord: SleepRecord = {
       id: `new-${Date.now()}`,
-      date: format(data.date, "yyyy-MM-dd"),
+      date: format(data.date, "yyyy-MM-dd"), // Keep standard format for storage
       stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${index}`}))
     };
