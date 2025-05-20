@@ -2,42 +2,25 @@
 import type { FC } from 'react';
 import Link from 'next/link';
 import type { Baby } from '@/lib/mock-data';
-import { archiveBaby } from '@/lib/mock-data';
+// Removed archiveBaby import as it's no longer used here
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, Edit3, Eye, Archive as ArchiveIcon } from 'lucide-react';
+import { User, Edit3, Eye } from 'lucide-react'; // Removed ArchiveIcon
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
-import { useToast } from "@/hooks/use-toast";
+// Removed useToast as it's no longer used for archiving from card
 
 interface BabyCardProps {
   baby: Baby;
-  onArchived?: () => void;
+  // Removed onArchived prop
 }
 
-const BabyCard: FC<BabyCardProps> = ({ baby, onArchived }) => {
-  const { toast } = useToast();
+const BabyCard: FC<BabyCardProps> = ({ baby }) => {
   const latestSleepDate = baby.sleepRecords && baby.sleepRecords.length > 0 && baby.sleepRecords[0].date
     ? format(new Date(baby.sleepRecords[0].date), "PPP", { locale: he })
     : "אין נתונים";
 
-  const handleArchive = () => {
-    if (archiveBaby(baby.id)) {
-      toast({ 
-        title: "תינוק הועבר לארכיון", 
-        description: `${baby.name} ${baby.familyName} הועבר בהצלחה לארכיון.` 
-      });
-      if (onArchived) {
-        onArchived();
-      }
-    } else {
-      toast({ 
-        title: "שגיאה בארכוב", 
-        description: `לא ניתן היה להעביר את ${baby.name} ${baby.familyName} לארכיון.`, 
-        variant: "destructive" 
-      });
-    }
-  };
+  // Removed handleArchive function as the button is removed
   
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
@@ -60,10 +43,7 @@ const BabyCard: FC<BabyCardProps> = ({ baby, onArchived }) => {
         {baby.description && <p className="text-sm text-muted-foreground pt-2 italic">"{baby.description}"</p>}
       </CardContent>
       <CardFooter className="flex flex-wrap justify-end gap-2 pt-4">
-        <Button variant="outline" size="sm" onClick={handleArchive}>
-          <ArchiveIcon className="me-2 h-4 w-4" />
-          לארכיון
-        </Button>
+        {/* Removed Archive Button */}
         <Link href={`/parent/${baby.parentUsername}`} passHref legacyBehavior>
           <Button variant="outline" size="sm">
             <Eye className="me-2 h-4 w-4" />

@@ -44,9 +44,10 @@ export default function CoachDashboardPage() {
     setSearchTerm(term);
   };
 
-  const handleBabyArchived = () => {
-    fetchAndSetBabies(); // Refetch active babies after one is archived
-  };
+  // Removed handleBabyArchived function as it's no longer triggered from BabyCard
+  // const handleBabyArchived = () => {
+  //   fetchAndSetBabies(); // Refetch active babies after one is archived
+  // };
 
   if (isLoading) {
     return (
@@ -71,7 +72,8 @@ export default function CoachDashboardPage() {
   return (
     <div className="h-full">
       <DashboardHeader onSearch={handleSearch} />
-      <BabyList babies={filteredBabies} onBabyArchived={handleBabyArchived} />
+      {/* Removed onBabyArchived prop from BabyList */}
+      <BabyList babies={filteredBabies} />
       {/* Real-time update placeholder:
       Firestore listeners would update 'babies' state, re-filtering automatically.
       A toast notification could also appear for new data.
