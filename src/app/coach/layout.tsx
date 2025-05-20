@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
 import { Button } from "@/components/ui/button";
-import { LogOut, UserPlus, Users, Archive } from 'lucide-react';
+import { LogOut, UserPlus, Users, Archive, FileText } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
@@ -35,7 +35,8 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
         <SidebarHeader>
           <div className="flex items-center justify-between p-2">
              <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
-             <SidebarTrigger className="group-data-[collapsible=icon]:hidden" />
+             {/* Removed group-data-[collapsible=icon]:hidden from SidebarTrigger to allow re-expanding */}
+             <SidebarTrigger />
           </div>
         </SidebarHeader>
         <SidebarContent>
@@ -53,6 +54,25 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
                 </Link>
               </SidebarMenuItem>
             ))}
+            {/* Export Buttons */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => alert('ייצוא CSV (לא מיושם)')} // Placeholder action
+                tooltip={{ children: 'ייצוא CSV', side: 'right', align: 'center' }}
+              >
+                <FileText className="h-5 w-5" />
+                <span>ייצוא CSV</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => alert('ייצוא PDF (לא מיושם)')} // Placeholder action
+                tooltip={{ children: 'ייצוא PDF', side: 'right', align: 'center' }}
+              >
+                <FileText className="h-5 w-5" />
+                <span>ייצוא PDF</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarContent>
         <Separator className="my-2" />

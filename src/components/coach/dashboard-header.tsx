@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { FC } from 'react';
@@ -23,16 +24,7 @@ const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch }) => {
           />
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <FileText className="me-2 h-4 w-4" />
-            ייצוא CSV
-          </Button>
-          <Button variant="outline">
-            <FileText className="me-2 h-4 w-4" />
-            ייצוא PDF
-          </Button>
-        </div>
+        {/* Export buttons removed from here */}
       </div>
     </div>
   );
