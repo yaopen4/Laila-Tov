@@ -32,7 +32,7 @@ const sleepCycleSchema = z.object({
   timeToSleep: z.string().min(1, { message: "שדה חובה." }),
   whoPutToSleep: z.string().min(1, { message: "שדה חובה." }),
   howFellAsleep: z.string().min(1, { message: "שדה חובה." }),
-  wakeTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "פורמט שעה לא תקין (HH:MM)."}),
+  wakeTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "פורמט שעה לא תקין (HH:MM)."}).min(1, { message: "שדה חובה." }),
 });
 
 const sleepRecordSchema = z.object({
@@ -306,3 +306,4 @@ export function SleepDataForm({ babyName, onSubmitSuccess, initialData = null, o
     </CardComponent>
   );
 }
+
