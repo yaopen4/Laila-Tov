@@ -99,11 +99,19 @@ export let mockBabies: Baby[] = [
     coachNotes: "לנסות להפחית גירויים לפני השינה. לבדוק טמפרטורת חדר.",
      sleepRecords: [
       {
-        id: "sr2",
+        id: "sr2-latest",
         date: "2024-07-21",
         stage: "ביסוס הרגלים",
         sleepCycles: [
-          { id: "sc3", bedtime: "20:00", timeToSleep: "20 דקות", whoPutToSleep: "אמא", howFellAsleep: "שיר ערש", wakeTime: "05:30" },
+          { id: "sc3-latest", bedtime: "20:00", timeToSleep: "20 דקות", whoPutToSleep: "אמא", howFellAsleep: "שיר ערש", wakeTime: "05:30" },
+        ],
+      },
+      {
+        id: "sr2-older",
+        date: "2024-07-20",
+        stage: "ביסוס הרגלים - יום קודם",
+        sleepCycles: [
+          { id: "sc3-older", bedtime: "20:15", timeToSleep: "25 דקות", whoPutToSleep: "אבא", howFellAsleep: "ליטוף", wakeTime: "06:00" },
         ],
       },
     ],
@@ -122,6 +130,16 @@ export let mockBabies: Baby[] = [
     parentUsername: "israel-family",
     description: "נרדם רק על הידיים.",
     coachNotes: "לעבוד על הרדמות עצמאית במיטה.",
+    sleepRecords: [
+      {
+        id: "sr3-latest",
+        date: "2024-07-22",
+        stage: "התחלה",
+        sleepCycles: [
+          { id: "sc4-latest", bedtime: "21:00", timeToSleep: "10 דקות", whoPutToSleep: "אמא", howFellAsleep: "לבד במיטה", wakeTime: "07:00" },
+        ],
+      },
+    ],
     isArchived: false,
     lastModified: getCurrentISODate(),
   },
@@ -320,3 +338,4 @@ export type SleepRecordFormData = Omit<SleepRecord, 'id' | 'sleepCycles'> & {
   sleepCycles: Array<Omit<SleepCycle, 'id'| 'wakeTime'> & { wakeTime?: string }>; // Ensure wakeTime is correctly typed as optional string
   date: Date; // Date object from calendar input
 };
+
