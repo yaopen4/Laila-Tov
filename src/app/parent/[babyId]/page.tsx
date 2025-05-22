@@ -1,4 +1,5 @@
 
+
 /**
  * @fileoverview Parent-facing page for a specific baby.
  * Allows parents to log sleep data, view coach recommendations, and manage recent sleep records.
@@ -13,7 +14,7 @@ import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, History, Edit3, Trash2, BookClock } from 'lucide-react';
+import { AlertCircle, History, Edit3, Trash2, BookOpenText } from 'lucide-react'; // Replaced BookClock with BookOpenText
 import { Button } from '@/components/ui/button';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
@@ -340,7 +341,7 @@ export default function ParentBabyPage() {
       {baby.sleepRecords && baby.sleepRecords.length > 1 && (
         <div className="mt-10">
           <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <BookClock className="h-6 w-6 text-primary" />
+            <BookOpenText className="h-6 w-6 text-primary" /> {/* Replaced BookClock with BookOpenText */}
             היסטוריית שינה קודמת
           </h2>
           <div className="space-y-6">
@@ -386,4 +387,3 @@ export default function ParentBabyPage() {
   );
 }
 
-    
