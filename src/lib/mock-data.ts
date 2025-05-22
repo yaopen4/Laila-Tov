@@ -10,7 +10,7 @@ export interface SleepCycle {
   timeToSleep: string; // e.g., "15 דקות", "מייד"
   whoPutToSleep: string; // e.g., "אמא", "אבא", "לבד"
   howFellAsleep: string; // Description of how the baby fell asleep
-  wakeTime: string; // HH:MM format, optional
+  wakeTime?: string; // HH:MM format, optional
 }
 
 /**
@@ -66,11 +66,19 @@ export let mockBabies: Baby[] = [
     sleepRecords: [
       {
         id: "sr1",
-        date: "2024-07-20",
+        date: "2024-07-20", // Latest record
         stage: "הסתגלות",
         sleepCycles: [
           { id: "sc1", bedtime: "19:00", timeToSleep: "30 דקות", whoPutToSleep: "אמא", howFellAsleep: "הנקה", wakeTime: "06:00" },
           { id: "sc2", bedtime: "10:00", timeToSleep: "15 דקות", whoPutToSleep: "אבא", howFellAsleep: "נענוע קל", wakeTime: "11:30" },
+        ],
+      },
+      {
+        id: "sr1-older",
+        date: "2024-07-19", // Older record
+        stage: "הסתגלות - יום קודם",
+        sleepCycles: [
+          { id: "sc1-older-c1", bedtime: "19:30", timeToSleep: "40 דקות", whoPutToSleep: "אבא", howFellAsleep: "בקבוק", wakeTime: "05:00" },
         ],
       },
     ],
@@ -125,7 +133,12 @@ export let mockBabies: Baby[] = [
  * @returns {Baby | undefined} The baby's profile if found and not archived, otherwise undefined.
  */
 export const getBabyByParentUsername = (username: string): Baby | undefined => {
-  return mockBabies.find(baby => baby.parentUsername === username && !baby.isArchived);
+  const baby = mockBabies.find(baby => baby.parentUsername === username && !baby.isArchived);
+  if (baby && baby.sleepRecords) {
+    // Ensure sleep records are sorted by date descending (latest first)
+    baby.sleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+  return baby;
 };
 
 /**
@@ -135,7 +148,12 @@ export const getBabyByParentUsername = (username: string): Baby | undefined => {
  * @returns {Baby | undefined} The baby's profile if found, otherwise undefined.
  */
 export const getBabyById = (id: string): Baby | undefined => {
-  return mockBabies.find(baby => baby.id === id);
+  const baby = mockBabies.find(baby => baby.id === id);
+  if (baby && baby.sleepRecords) {
+     // Ensure sleep records are sorted by date descending (latest first)
+    baby.sleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+  return baby;
 };
 
 /**
@@ -147,7 +165,7 @@ export const getBabyById = (id: string): Baby | undefined => {
 export const addBaby = (babyData: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>): Baby => {
   const newBaby: Baby = {
     ...babyData,
-    id: (mockBabies.length + 1).toString(), // Simple ID generation
+    id: (mockBabies.length + Date.now()).toString(), // Simple ID generation
     sleepRecords: [],
     coachNotes: "",
     isArchived: false,
@@ -160,6 +178,7 @@ export const addBaby = (babyData: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes
 /**
  * Updates an existing baby's profile.
  * Merges the provided data with the existing baby data and updates the `lastModified` timestamp.
+ * Sleep records are also re-sorted to ensure latest is first.
  * @param {Partial<Baby> & Pick<Baby, 'id'>} updatedBabyData - The data to update, must include the baby's ID.
  * @returns {boolean} True if the update was successful, false if the baby was not found.
  */
@@ -171,6 +190,9 @@ export const updateBaby = (updatedBabyData: Partial<Baby> & Pick<Baby, 'id'>): b
         ...updatedBabyData, 
         lastModified: getCurrentISODate() 
     };
+    if (mockBabies[index].sleepRecords) {
+      mockBabies[index].sleepRecords!.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
     return true;
   }
   return false;
@@ -212,18 +234,32 @@ export const unarchiveBaby = (babyId: string): boolean => {
 
 /**
  * Retrieves all active (non-archived) babies.
+ * Sleep records for each baby are sorted with the latest first.
  * @returns {Baby[]} An array of active baby profiles.
  */
 export const getActiveBabies = (): Baby[] => {
-  return mockBabies.filter(baby => !baby.isArchived);
+  const activeBabies = mockBabies.filter(baby => !baby.isArchived);
+  activeBabies.forEach(baby => {
+    if (baby.sleepRecords) {
+      baby.sleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+  });
+  return activeBabies;
 };
 
 /**
  * Retrieves all archived babies.
+ * Sleep records for each baby are sorted with the latest first.
  * @returns {Baby[]} An array of archived baby profiles.
  */
 export const getArchivedBabies = (): Baby[] => {
-  return mockBabies.filter(baby => baby.isArchived);
+  const archived = mockBabies.filter(baby => baby.isArchived);
+  archived.forEach(baby => {
+    if (baby.sleepRecords) {
+      baby.sleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+  });
+  return archived;
 };
 
 /**
@@ -253,8 +289,8 @@ export const deleteSleepRecord = (babyId: string, recordId: string): boolean => 
   }
 
   baby.sleepRecords.splice(recordIndex, 1);
-  baby.lastModified = getCurrentISODate();
-  mockBabies[babyIndex] = { ...baby }; // Ensure the main array is updated
+  // Update the baby object in the array and set lastModified
+  mockBabies[babyIndex] = { ...baby, lastModified: getCurrentISODate() };
   return true;
 };
 
@@ -281,6 +317,6 @@ export type AddBabyFormData = Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 
  * Uses a `Date` object for the date field (from calendar input) and omits IDs for new cycles.
  */
 export type SleepRecordFormData = Omit<SleepRecord, 'id' | 'sleepCycles'> & {
-  sleepCycles: Array<Omit<SleepCycle, 'id'>>;
+  sleepCycles: Array<Omit<SleepCycle, 'id'| 'wakeTime'> & { wakeTime?: string }>; // Ensure wakeTime is correctly typed as optional string
   date: Date; // Date object from calendar input
 };
