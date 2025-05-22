@@ -20,10 +20,10 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
+// Toast import removed as it's handled by parent page
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, Edit3, MessageSquareText } from "lucide-react";
-import type { Baby } from "@/lib/mock-data"; 
+import type { Baby } from "@/lib/mock-data";
 import { useEffect } from "react";
 
 // Zod schema for form validation
@@ -37,7 +37,7 @@ const formSchema = z.object({
   siblingsNames: z.string().optional(),
   description: z.string().optional(),
   parentUsername: z.string().min(3, { message: "שם משתמש להורים חייב להכיל לפחות 3 תווים." }),
-  coachNotes: z.string().optional(), // Added coachNotes field
+  coachNotes: z.string().optional(), // CoachNotes field
 });
 
 /**
@@ -50,7 +50,7 @@ export type BabyFormData = z.infer<typeof formSchema>;
  */
 interface AddBabyFormProps {
   /** Initial data to pre-fill the form, used in edit mode. */
-  initialData?: Partial<Baby>;
+  initialData?: Partial<Baby> | null; // Allow null for initial loading state
   /** Flag to indicate if the form is in edit mode. Defaults to false. */
   isEditMode?: boolean;
   /** Callback function to handle form submission. Passes form values and an optional ID (for updates). */
@@ -58,10 +58,9 @@ interface AddBabyFormProps {
 }
 
 export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: AddBabyFormProps) {
-  const { toast } = useToast();
   const form = useForm<BabyFormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: { 
+    defaultValues: {
       name: initialData?.name || "",
       familyName: initialData?.familyName || "",
       age: initialData?.age || 0,
@@ -77,8 +76,6 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
 
   /**
    * Effect to reset form fields when initialData changes.
-   * This is useful if the same form instance is used for editing different babies,
-   * or if initialData loads asynchronously.
    */
   useEffect(() => {
     if (initialData) {
@@ -94,27 +91,24 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
         parentUsername: initialData.parentUsername || "",
         coachNotes: initialData.coachNotes || "", // Reset coachNotes
       });
+    } else if (!isEditMode) { // If not in edit mode and no initial data, reset to blank for new entry
+        form.reset({
+            name: "", familyName: "", age: 0, motherName: "", fatherName: "",
+            siblingsCount: 0, siblingsNames: "", description: "", parentUsername: "",
+            coachNotes: ""
+        });
     }
-  }, [initialData, form]); 
+  }, [initialData, form, isEditMode]); // form.reset is stable but common to include
 
   /**
    * Handles the actual form submission.
-   * Calls the onSubmitProp with form values and shows a toast notification.
-   * Resets the form if not in edit mode.
+   * Calls the onSubmitProp with form values.
    * @param {BabyFormData} values - The validated form data.
    */
   function onSubmit(values: BabyFormData) {
-    onSubmitProp(values, initialData?.id); 
-    // Toast is usually handled by the parent page after successful submission
-    // to provide more context. If keeping toast here, ensure it's desired.
-    // toast({
-    //   title: isEditMode ? "פרטי תינוק עודכנו!" : "תינוק נוסף בהצלחה!",
-    //   description: isEditMode 
-    //     ? `הפרופיל של ${values.name} ${values.familyName} עודכן.`
-    //     : `הפרופיל של ${values.name} ${values.familyName} נוצר.`,
-    // });
+    onSubmitProp(values, initialData?.id);
     if (!isEditMode) {
-      form.reset({ 
+      form.reset({
         name: "", familyName: "", age: 0, motherName: "", fatherName: "",
         siblingsCount: 0, siblingsNames: "", description: "", parentUsername: "",
         coachNotes: "" // Reset coachNotes for new entry
@@ -255,9 +249,7 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
                 </FormItem>
               )}
             />
-            {/* Coach Notes Field - visible in edit mode, or always if desired */}
-            {/* For now, let's make it always visible as coaches might add notes during creation too */}
-             <FormField
+            <FormField
               control={form.control}
               name="coachNotes"
               render={({ field }) => (
@@ -289,5 +281,3 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
     </Card>
   );
 }
-
-    
