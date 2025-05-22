@@ -254,7 +254,8 @@ export default function ParentBabyPage() {
     <div className="container mx-auto py-8 px-4">
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-bold mb-1">
-          <span className="text-primary">לילה</span> <span className="text-accent">טוב</span> <span className="text-primary">משפחת {baby.familyName}</span>
+          <span className="text-primary">לילה טוב, </span>
+          <span className="text-accent">משפחת {baby.familyName}</span>
         </h1>
         <p className="text-lg text-muted-foreground">
           ממשק הורים למעקב שינה
