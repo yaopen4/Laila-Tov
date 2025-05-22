@@ -12,7 +12,7 @@ import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, History, Edit3, Trash2 } from 'lucide-react';
+import { AlertCircle, History, Edit3, Trash2, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
@@ -21,10 +21,10 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  // DialogFooter, // Not used directly, form has its own buttons
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+  // DialogTrigger, // Not used directly, form has its own buttons or manual control
   // DialogClose, // Not used directly, form cancellation handles closing
 } from "@/components/ui/dialog";
 import {
@@ -33,7 +33,7 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
+  // AlertDialogFooter, // Used in specific delete dialog
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
@@ -57,6 +57,9 @@ export default function ParentBabyPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
 
+  // State for all history dialog
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+
 
   // Effect to fetch baby data based on parentUsername (babyId from route)
   useEffect(() => {
@@ -68,9 +71,8 @@ export default function ParentBabyPage() {
         if (foundBaby) {
           setBaby(foundBaby);
           if (foundBaby.sleepRecords && foundBaby.sleepRecords.length > 0) {
-            // Sort records by date descending to get the latest
-            const sortedRecords = [...foundBaby.sleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            setLatestRecord(sortedRecords[0]);
+            // Sort records by date descending to get the latest (already sorted in mock-data)
+            setLatestRecord(foundBaby.sleepRecords[0]);
           } else {
             setLatestRecord(null);
           }
@@ -86,8 +88,8 @@ export default function ParentBabyPage() {
    */
   const refreshLatestRecord = (updatedBaby: Baby) => {
     if (updatedBaby.sleepRecords && updatedBaby.sleepRecords.length > 0) {
-      const sortedRecords = [...updatedBaby.sleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setLatestRecord(sortedRecords[0]);
+      // Sleep records are assumed to be sorted by date descending in mock-data functions
+      setLatestRecord(updatedBaby.sleepRecords[0]);
     } else {
       setLatestRecord(null);
     }
@@ -107,15 +109,16 @@ export default function ParentBabyPage() {
       sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${Date.now()}-${index}`}))
     };
     
-    const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])];
+    const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Ensure sort
+      
     const updatedBaby = {
         ...baby,
-        sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        sleepRecords: updatedSleepRecords
     };
-    // Note: In a real app, this would be an API call, and mockBabies in lib/mock-data.ts would be updated.
-    // For this mock setup, we update the local baby state. The actual mockBabies array isn't modified here
+    // Note: In a real app, this would be an API call.
+    // For mock setup, we update local state. Actual mockBabies array isn't modified here
     // unless this page also calls an updateBaby function from mock-data.ts upon submission.
-    // Assuming `updateBaby` in mock-data is eventually called, or this is for local display only.
     setBaby(updatedBaby); 
     refreshLatestRecord(updatedBaby);
   };
@@ -144,7 +147,6 @@ export default function ParentBabyPage() {
       date: format(data.date, "yyyy-MM-dd"),
       stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({
-        // Preserve existing sleep cycle IDs if possible, generate new if cycle count changes
         id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`, 
         bedtime: sc.bedtime,
         timeToSleep: sc.timeToSleep,
@@ -154,15 +156,15 @@ export default function ParentBabyPage() {
       })),
     };
     
-    const updatedSleepRecords = baby.sleepRecords?.map(sr =>
+    const updatedSleepRecords = (baby.sleepRecords?.map(sr =>
       sr.id === recordToEdit.id ? updatedRecord : sr
-    ) || [updatedRecord]; // Fallback if sleepRecords was undefined
+    ) || [updatedRecord])
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Ensure sort
     
     const updatedBaby = {
         ...baby,
-        sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        sleepRecords: updatedSleepRecords
     };
-    // Similar to adding, this updates local state. Ensure mock-data update if persistence is needed.
     setBaby(updatedBaby);
     refreshLatestRecord(updatedBaby);
 
@@ -283,12 +285,11 @@ export default function ParentBabyPage() {
             <div className="flex gap-2 mt-4">
               {/* Edit Record Dialog */}
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
-                    <Edit3 className="me-2 h-4 w-4" />
-                    ערוך רשומה
-                  </Button>
-                </DialogTrigger>
+                {/* Button to trigger edit dialog */}
+                <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
+                  <Edit3 className="me-2 h-4 w-4" />
+                  ערוך רשומה
+                </Button>
                 <DialogContent className="sm:max-w-[625px] max-h-[85vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>עריכת רשומת שינה</DialogTitle>
@@ -298,12 +299,12 @@ export default function ParentBabyPage() {
                   </DialogHeader>
                   {recordToEdit && baby && (
                     <SleepDataForm
-                      babyName={baby.name} // Pass baby name for consistency if needed in form
+                      babyName={baby.name}
                       initialData={recordToEdit}
                       onSubmitSuccess={handleEditFormSubmit}
                       onCancel={handleCancelEdit}
                       submitButtonText="עדכן רשומה"
-                      isDialog={true} // Indicate form is in a dialog for layout adjustments
+                      isDialog={true}
                     />
                   )}
                 </DialogContent>
@@ -334,7 +335,64 @@ export default function ParentBabyPage() {
           </CardContent>
         </Card>
       )}
-       <div className="mt-12 text-center">
+
+      {/* Button to show all history */}
+      {baby.sleepRecords && baby.sleepRecords.length > 0 && (
+        <div className="mt-6 flex justify-center">
+          <Button variant="secondary" onClick={() => setIsHistoryDialogOpen(true)}>
+            <ListChecks className="me-2 h-4 w-4" />
+            הצג את כל ההיסטוריה
+          </Button>
+        </div>
+      )}
+
+      {/* Dialog for displaying all sleep history */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>היסטוריית שינה מלאה עבור {baby.name}</DialogTitle>
+            <DialogDescription>
+              כאן מוצגים כל רישומי השינה עבור {baby.name}, מהעדכני ביותר.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            {baby.sleepRecords && baby.sleepRecords.length > 0 ? (
+              baby.sleepRecords.map(record => (
+                <Card key={record.id} className="shadow-md">
+                  <CardHeader className="pb-3 pt-4 px-4">
+                    <CardTitle className="text-lg">
+                      {format(new Date(record.date), "PPP", { locale: he })} - (שלב: {record.stage})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 px-4 pb-4">
+                    {record.sleepCycles.length > 0 ? (
+                      record.sleepCycles.map((cycle, index) => (
+                        <div key={cycle.id || index} className="p-3 border rounded-md bg-background/50">
+                          <h4 className="font-semibold mb-1">מחזור שינה {index + 1}</h4>
+                          <p className="text-sm"><strong>שעת השכבה:</strong> {cycle.bedtime}</p>
+                          <p className="text-sm"><strong>זמן להירדם:</strong> {cycle.timeToSleep}</p>
+                          <p className="text-sm"><strong>מי הרדים:</strong> {cycle.whoPutToSleep}</p>
+                          <p className="text-sm"><strong>איך נרדם:</strong> {cycle.howFellAsleep}</p>
+                          <p className="text-sm"><strong>שעת יקיצה:</strong> {cycle.wakeTime || '-'}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">אין מחזורי שינה מתועדים לרשומה זו.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-8">אין היסטוריית שינה מתועדת.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>סגור</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="mt-12 text-center">
         <Link href="/" passHref legacyBehavior>
           <Button variant="link">התנתקות וחזרה למסך הכניסה</Button>
         </Link>
@@ -342,3 +400,4 @@ export default function ParentBabyPage() {
     </div>
   );
 }
+
