@@ -48,12 +48,6 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
     router.push('/');
   };
 
-  // Placeholder for export functionality
-  const handlePlaceholderExport = (type: string) => {
-    alert(`פונקציית ייצוא ל-${type} עדיין בפיתוח.`);
-  };
-
-
   return (
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon">
@@ -91,10 +85,10 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
             </SidebarMenuButton>
         </div>
       </Sidebar>
-      <SidebarInset className="bg-background">
-        <main className="p-4 md:p-6 h-full overflow-auto">
-          {children}
-        </main>
+      <SidebarInset className="bg-background p-4 md:p-6 overflow-auto">
+        {/* SidebarInset is already a <main> tag. Padding and overflow are applied here.
+            It has min-h-svh and flex-1, so it will manage its height and width. */}
+        {children}
       </SidebarInset>
     </SidebarProvider>
   );

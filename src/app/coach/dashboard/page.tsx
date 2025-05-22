@@ -332,7 +332,9 @@ export default function CoachDashboardPage() {
   
 
   return (
-    <div className="h-full">
+    // The root div of the page content.
+    // Height management is now handled by SidebarInset and its parent flex container.
+    <div>
       <DashboardHeader 
         onSearch={handleSearch} 
         onExportCSV={handleExportCSV}
