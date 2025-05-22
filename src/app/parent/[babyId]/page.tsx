@@ -265,16 +265,7 @@ export default function ParentBabyPage() {
       {/* Form to add new sleep data */}
       <SleepDataForm babyName={baby.name} onSubmitSuccess={handleAddNewFormSubmit} />
       
-      <div className="relative mt-8">
-        <CoachRecommendationsDisplay notes={baby.coachNotes} />
-        {/* This button links to the coach's edit page for this baby's notes */}
-        <Link href={`/coach/edit-baby/${baby.id}`} passHref legacyBehavior>
-          <Button variant="outline" size="sm" className="absolute top-4 left-4 z-10 rtl:left-auto rtl:right-4">
-            <Edit3 className="me-2 h-4 w-4" />
-            ערוך המלצות
-          </Button>
-        </Link>
-      </div>
+      <CoachRecommendationsDisplay notes={baby.coachNotes} />
 
 
       {/* Display latest sleep record if available */}
@@ -416,3 +407,4 @@ export default function ParentBabyPage() {
     </div>
   );
 }
+
