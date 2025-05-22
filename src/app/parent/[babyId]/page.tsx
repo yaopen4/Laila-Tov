@@ -38,12 +38,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { isParent, logout as authLogout } from '@/lib/auth-service'; // Import auth service
+import { isParent, logout as authLogout, isCoach } from '@/lib/auth-service'; // Import isCoach
 
 
 export default function ParentBabyPage() {
   const params = useParams();
-  const router = useRouter(); // Added useRouter
+  const router = useRouter();
   const babyId = params.babyId as string; // This is actually the parentUsername from routing
   const [baby, setBaby] = useState<Baby | null>(null);
   const [latestRecord, setLatestRecord] = useState<SleepRecord | null>(null);
@@ -65,7 +65,8 @@ export default function ParentBabyPage() {
   // Route protection and data fetching
   useEffect(() => {
     if (typeof window !== 'undefined' && babyId) {
-      if (!isParent(babyId)) {
+      // Allow access if user is coach OR the correct parent
+      if (!isCoach() && !isParent(babyId)) {
         router.push('/');
         return;
       }
@@ -83,9 +84,13 @@ export default function ParentBabyPage() {
             setLatestRecord(null);
           }
         } else {
-          // Baby not found for this parentUsername, redirect to login
-           authLogout(); // Clear any invalid session
-           router.push('/');
+          // Baby not found for this parentUsername
+          // If the user is not a coach and the baby is not found, log them out and redirect.
+          // If the user IS a coach, they'll see the "baby not found" UI on this page.
+          if (!isCoach()) {
+             authLogout(); // Clear any invalid session
+             router.push('/');
+          }
         }
         setIsLoading(false);
       }, 500);
@@ -246,7 +251,7 @@ export default function ParentBabyPage() {
     );
   }
 
-  // Baby not found UI (or not authorized)
+  // Baby not found UI (or not authorized for this specific baby by a non-coach)
   if (!baby) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
