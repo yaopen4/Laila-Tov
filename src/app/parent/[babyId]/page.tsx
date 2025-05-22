@@ -14,7 +14,7 @@ import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, History, Edit3, Trash2, BookOpenText } from 'lucide-react'; // Replaced BookClock with BookOpenText
+import { AlertCircle, History, Edit3, Trash2, BookOpenText, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
@@ -56,6 +56,9 @@ export default function ParentBabyPage() {
   // State for delete confirmation dialog
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
+
+  // State for showing/hiding full sleep history
+  const [showFullHistory, setShowFullHistory] = useState(false);
 
 
   // Effect to fetch baby data based on parentUsername (babyId from route)
@@ -285,32 +288,10 @@ export default function ParentBabyPage() {
               </div>
             ))}
             <div className="flex gap-2 mt-4">
-              {/* Edit Record Dialog */}
-              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
-                  <Edit3 className="me-2 h-4 w-4" />
-                  ערוך רשומה
-                </Button>
-                <DialogContent className="sm:max-w-[625px] max-h-[85vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>עריכת רשומת שינה</DialogTitle>
-                    <DialogDescription>
-                      עדכן את פרטי השינה עבור {baby.name} לתאריך {recordToEdit ? format(new Date(recordToEdit.date), "PPP", { locale: he }) : ''}.
-                    </DialogDescription>
-                  </DialogHeader>
-                  {recordToEdit && baby && (
-                    <SleepDataForm
-                      babyName={baby.name}
-                      initialData={recordToEdit}
-                      onSubmitSuccess={handleEditFormSubmit}
-                      onCancel={handleCancelEdit}
-                      submitButtonText="עדכן רשומה"
-                      isDialog={true}
-                    />
-                  )}
-                </DialogContent>
-              </Dialog>
-              {/* Delete Record Confirmation Dialog */}
+              <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
+                <Edit3 className="me-2 h-4 w-4" />
+                ערוך רשומה
+              </Button>
               <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm" onClick={() => latestRecord && handleDeleteRecordClick(latestRecord.id)}>
@@ -336,12 +317,48 @@ export default function ParentBabyPage() {
           </CardContent>
         </Card>
       )}
+      
+      {/* Edit Record Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[625px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>עריכת רשומת שינה</DialogTitle>
+            <DialogDescription>
+              עדכן את פרטי השינה עבור {baby.name} לתאריך {recordToEdit ? format(new Date(recordToEdit.date), "PPP", { locale: he }) : ''}.
+            </DialogDescription>
+          </DialogHeader>
+          {recordToEdit && baby && (
+            <SleepDataForm
+              babyName={baby.name}
+              initialData={recordToEdit}
+              onSubmitSuccess={handleEditFormSubmit}
+              onCancel={handleCancelEdit}
+              submitButtonText="עדכן רשומה"
+              isDialog={true}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Display older sleep records if available */}
+      {/* Button to toggle full history display */}
       {baby.sleepRecords && baby.sleepRecords.length > 1 && (
-        <div className="mt-10">
+        <div className="mt-6 text-center">
+          <Button
+            variant="outline"
+            onClick={() => setShowFullHistory(!showFullHistory)}
+            className="w-full md:w-auto"
+          >
+            {showFullHistory ? "הסתר היסטוריית שינה" : "הצג היסטוריית שינה מלאה"}
+            {showFullHistory ? <ChevronUp className="ms-2 h-4 w-4" /> : <ChevronDown className="ms-2 h-4 w-4" />}
+          </Button>
+        </div>
+      )}
+
+      {/* Display older sleep records if showFullHistory is true */}
+      {showFullHistory && baby.sleepRecords && baby.sleepRecords.length > 1 && (
+        <div className="mt-6"> {/* Adjusted margin */}
           <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <BookOpenText className="h-6 w-6 text-primary" /> {/* Replaced BookClock with BookOpenText */}
+            <BookOpenText className="h-6 w-6 text-primary" />
             היסטוריית שינה קודמת
           </h2>
           <div className="space-y-6">
@@ -373,6 +390,8 @@ export default function ParentBabyPage() {
           </div>
         </div>
       )}
+
+      {/* Message if no sleep records at all */}
       {baby.sleepRecords && baby.sleepRecords.length === 0 && !latestRecord && (
          <p className="text-center text-muted-foreground py-8 mt-8">אין היסטוריית שינה מתועדת עבור {baby.name}.</p>
       )}
@@ -386,4 +405,3 @@ export default function ParentBabyPage() {
     </div>
   );
 }
-
