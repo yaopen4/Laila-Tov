@@ -1,4 +1,8 @@
-
+/**
+ * @fileoverview Page for editing an existing baby's profile.
+ * Fetches baby data by ID and uses AddBabyForm in edit mode.
+ * Allows archiving the baby from this page.
+ */
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -16,13 +20,14 @@ export default function EditBabyPage() {
   const router = useRouter();
   const { toast } = useToast();
   const babyId = params.babyId as string;
-  const [baby, setBaby] = useState<Baby | null | undefined>(undefined); // undefined for loading, null for not found
+  const [baby, setBaby] = useState<Baby | null | undefined>(undefined); // undefined: loading, null: not found
   const [isLoading, setIsLoading] = useState(true);
 
+  // Effect to fetch baby data when babyId changes
   useEffect(() => {
     if (babyId) {
       setIsLoading(true);
-      // Simulate API call
+      // Simulate API call to fetch baby data
       setTimeout(() => {
         const foundBaby = getBabyById(babyId);
         setBaby(foundBaby);
@@ -31,13 +36,21 @@ export default function EditBabyPage() {
     }
   }, [babyId]);
 
+  /**
+   * Handles the submission of the edited baby form.
+   * Updates the baby's data in mock storage.
+   * @param {BabyFormData} values - The updated form data.
+   * @param {string} [id] - The ID of the baby being edited.
+   */
   const handleEditBabySubmit = (values: BabyFormData, id?: string) => {
     if (!id || !baby) return;
     
     const updatedBabyData: Partial<Baby> = { ...values };
-    // Ensure sleepRecords and other non-form fields are preserved if not edited by the form
-    const currentBabyData = getBabyById(id);
-    if (!currentBabyData) return;
+    const currentBabyData = getBabyById(id); // Re-fetch to ensure we have the most current non-form data
+    if (!currentBabyData) {
+        toast({ title: "שגיאה", description: "לא ניתן למצוא את התינוק לעדכון.", variant: "destructive" });
+        return;
+    }
 
     const success = updateBaby({
       ...currentBabyData, // Start with all existing data
@@ -60,6 +73,9 @@ export default function EditBabyPage() {
     }
   };
 
+  /**
+   * Handles archiving the baby.
+   */
   const handleArchive = () => {
     if (!babyId || !baby) return;
     if (archiveBaby(babyId)) {
@@ -77,7 +93,7 @@ export default function EditBabyPage() {
     }
   };
 
-
+  // Loading state UI
   if (isLoading) {
     return (
       <div className="container mx-auto py-8">
@@ -88,6 +104,7 @@ export default function EditBabyPage() {
     );
   }
 
+  // Baby not found UI
   if (!baby) {
     return (
       <div className="container mx-auto py-8 text-center">
@@ -108,7 +125,7 @@ export default function EditBabyPage() {
     );
   }
   
-  // If baby is archived, don't show edit form, show message instead
+  // Baby is archived, show message instead of edit form
   if (baby.isArchived) {
      return (
       <div className="container mx-auto py-8 text-center">
@@ -129,7 +146,7 @@ export default function EditBabyPage() {
     );
   }
 
-
+  // Main edit form UI
   return (
     <div className="container mx-auto py-8">
       <AddBabyForm

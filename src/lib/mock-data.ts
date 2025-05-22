@@ -1,43 +1,56 @@
 
 import { format } from 'date-fns';
 
+/**
+ * Represents a single sleep cycle within a sleep record.
+ */
 export interface SleepCycle {
   id: string;
-  bedtime: string;
-  timeToSleep: string;
-  whoPutToSleep: string;
-  howFellAsleep: string;
-  wakeTime: string;
+  bedtime: string; // HH:MM format
+  timeToSleep: string; // e.g., "15 דקות", "מייד"
+  whoPutToSleep: string; // e.g., "אמא", "אבא", "לבד"
+  howFellAsleep: string; // Description of how the baby fell asleep
+  wakeTime: string; // HH:MM format, optional
 }
 
+/**
+ * Represents a collection of sleep cycles for a specific date and process stage.
+ */
 export interface SleepRecord {
   id: string;
-  date: string;
-  stage: string;
+  date: string; // YYYY-MM-DD format
+  stage: string; // Stage in the sleep coaching process, e.g., "הסתגלות"
   sleepCycles: SleepCycle[];
 }
 
+/**
+ * Represents a baby's profile and associated data.
+ */
 export interface Baby {
   id: string;
   name: string;
   familyName: string;
-  age: number; // months
+  age: number; // Age in months
   motherName: string;
   fatherName: string;
   siblingsCount: number;
-  siblingsNames?: string;
-  description?: string;
-  parentUsername: string;
-  sleepRecords?: SleepRecord[];
-  coachNotes?: string;
-  isArchived: boolean;
-  dateArchived?: string; // ISO Date string
-  lastModified: string; // ISO Date string
+  siblingsNames?: string; // Optional names of siblings
+  description?: string; // Optional general description about the baby
+  parentUsername: string; // Username for parents to log in
+  sleepRecords?: SleepRecord[]; // Array of sleep records
+  coachNotes?: string; // Notes from the sleep coach
+  isArchived: boolean; // Flag indicating if the baby's profile is archived
+  dateArchived?: string; // ISO Date string when the baby was archived
+  lastModified: string; // ISO Date string of the last modification
 }
 
-// Helper to get current ISO date string
+/**
+ * Helper function to get the current date and time as an ISO string.
+ * @returns {string} The current date and time in ISO format.
+ */
 const getCurrentISODate = () => new Date().toISOString();
 
+// Initial mock data for babies
 export let mockBabies: Baby[] = [
   {
     id: "1",
@@ -106,18 +119,34 @@ export let mockBabies: Baby[] = [
   },
 ];
 
+/**
+ * Retrieves a baby's profile by their parent's username, excluding archived babies.
+ * @param {string} username - The parent's username.
+ * @returns {Baby | undefined} The baby's profile if found and not archived, otherwise undefined.
+ */
 export const getBabyByParentUsername = (username: string): Baby | undefined => {
   return mockBabies.find(baby => baby.parentUsername === username && !baby.isArchived);
 };
 
+/**
+ * Retrieves a baby's profile by their ID.
+ * This function can fetch both active and archived babies.
+ * @param {string} id - The baby's ID.
+ * @returns {Baby | undefined} The baby's profile if found, otherwise undefined.
+ */
 export const getBabyById = (id: string): Baby | undefined => {
-  // Allows fetching archived babies too for edit page or direct access
   return mockBabies.find(baby => baby.id === id);
 };
 
-export const addBaby = (baby: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>): Baby => {
+/**
+ * Adds a new baby to the mock data.
+ * Generates a simple ID and initializes empty sleep records, coach notes, and default status.
+ * @param {Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>} babyData - The baby's data excluding auto-generated fields.
+ * @returns {Baby} The newly created baby object.
+ */
+export const addBaby = (babyData: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>): Baby => {
   const newBaby: Baby = {
-    ...baby,
+    ...babyData,
     id: (mockBabies.length + 1).toString(), // Simple ID generation
     sleepRecords: [],
     coachNotes: "",
@@ -128,6 +157,12 @@ export const addBaby = (baby: Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 
   return newBaby;
 };
 
+/**
+ * Updates an existing baby's profile.
+ * Merges the provided data with the existing baby data and updates the `lastModified` timestamp.
+ * @param {Partial<Baby> & Pick<Baby, 'id'>} updatedBabyData - The data to update, must include the baby's ID.
+ * @returns {boolean} True if the update was successful, false if the baby was not found.
+ */
 export const updateBaby = (updatedBabyData: Partial<Baby> & Pick<Baby, 'id'>): boolean => {
   const index = mockBabies.findIndex(baby => baby.id === updatedBabyData.id);
   if (index !== -1) {
@@ -141,7 +176,12 @@ export const updateBaby = (updatedBabyData: Partial<Baby> & Pick<Baby, 'id'>): b
   return false;
 };
 
-
+/**
+ * Archives a baby's profile.
+ * Sets `isArchived` to true, records `dateArchived`, and updates `lastModified`.
+ * @param {string} babyId - The ID of the baby to archive.
+ * @returns {boolean} True if archiving was successful, false if the baby was not found.
+ */
 export const archiveBaby = (babyId: string): boolean => {
   const index = mockBabies.findIndex(baby => baby.id === babyId);
   if (index !== -1) {
@@ -153,6 +193,12 @@ export const archiveBaby = (babyId: string): boolean => {
   return false;
 };
 
+/**
+ * Unarchives a baby's profile.
+ * Sets `isArchived` to false, clears `dateArchived`, and updates `lastModified`.
+ * @param {string} babyId - The ID of the baby to unarchive.
+ * @returns {boolean} True if unarchiving was successful, false if the baby was not found.
+ */
 export const unarchiveBaby = (babyId: string): boolean => {
   const index = mockBabies.findIndex(baby => baby.id === babyId);
   if (index !== -1) {
@@ -164,24 +210,39 @@ export const unarchiveBaby = (babyId: string): boolean => {
   return false;
 };
 
+/**
+ * Retrieves all active (non-archived) babies.
+ * @returns {Baby[]} An array of active baby profiles.
+ */
 export const getActiveBabies = (): Baby[] => {
   return mockBabies.filter(baby => !baby.isArchived);
 };
 
+/**
+ * Retrieves all archived babies.
+ * @returns {Baby[]} An array of archived baby profiles.
+ */
 export const getArchivedBabies = (): Baby[] => {
   return mockBabies.filter(baby => baby.isArchived);
 };
 
+/**
+ * Deletes a specific sleep record for a baby.
+ * Updates the baby's `lastModified` timestamp.
+ * @param {string} babyId - The ID of the baby whose sleep record is to be deleted.
+ * @param {string} recordId - The ID of the sleep record to delete.
+ * @returns {boolean} True if deletion was successful, false otherwise (e.g., baby or record not found).
+ */
 export const deleteSleepRecord = (babyId: string, recordId: string): boolean => {
   const babyIndex = mockBabies.findIndex(b => b.id === babyId);
   if (babyIndex === -1) {
-    console.error("Baby not found for deletion:", babyId);
+    console.error("Baby not found for sleep record deletion:", babyId);
     return false;
   }
 
   const baby = mockBabies[babyIndex];
   if (!baby.sleepRecords) {
-    console.error("Baby has no sleep records:", babyId);
+    console.error("Baby has no sleep records to delete from:", babyId);
     return false;
   }
 
@@ -193,22 +254,33 @@ export const deleteSleepRecord = (babyId: string, recordId: string): boolean => 
 
   baby.sleepRecords.splice(recordIndex, 1);
   baby.lastModified = getCurrentISODate();
-  mockBabies[babyIndex] = { ...baby }; // Ensure the main array is updated with the modified baby object
+  mockBabies[babyIndex] = { ...baby }; // Ensure the main array is updated
   return true;
 };
 
+/**
+ * Permanently deletes a baby's profile from the system.
+ * This action is irreversible.
+ * @param {string} babyId - The ID of the baby to delete permanently.
+ * @returns {boolean} True if deletion was successful, false if the baby was not found.
+ */
 export const deleteBabyPermanently = (babyId: string): boolean => {
   const initialLength = mockBabies.length;
   mockBabies = mockBabies.filter(baby => baby.id !== babyId);
   return mockBabies.length < initialLength;
 };
 
-
-// Export type for form data if it's different or more specific than Baby
+/**
+ * Type definition for the data structure used in the add/edit baby form.
+ * Excludes fields that are auto-generated or managed internally.
+ */
 export type AddBabyFormData = Omit<Baby, 'id' | 'sleepRecords' | 'coachNotes' | 'isArchived' | 'lastModified' | 'dateArchived'>;
 
-// For sleep record form, doesn't include baby details
+/**
+ * Type definition for the data structure used in the sleep record form.
+ * Uses a `Date` object for the date field (from calendar input) and omits IDs for new cycles.
+ */
 export type SleepRecordFormData = Omit<SleepRecord, 'id' | 'sleepCycles'> & {
   sleepCycles: Array<Omit<SleepCycle, 'id'>>;
-  date: Date; // Date object from calendar
+  date: Date; // Date object from calendar input
 };

@@ -1,4 +1,7 @@
-
+/**
+ * @fileoverview Parent-facing page for a specific baby.
+ * Allows parents to log sleep data, view coach recommendations, and manage recent sleep records.
+ */
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -18,11 +21,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
+  // DialogFooter, // Not used directly, form has its own buttons
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
+  // DialogClose, // Not used directly, form cancellation handles closing
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -40,27 +43,32 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function ParentBabyPage() {
   const params = useParams();
-  const babyId = params.babyId as string; 
+  const babyId = params.babyId as string; // This is actually the parentUsername from routing
   const [baby, setBaby] = useState<Baby | null>(null);
   const [latestRecord, setLatestRecord] = useState<SleepRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
+  // State for edit dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [recordToEdit, setRecordToEdit] = useState<SleepRecord | null>(null);
 
+  // State for delete confirmation dialog
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
 
 
+  // Effect to fetch baby data based on parentUsername (babyId from route)
   useEffect(() => {
     if (babyId) {
       setIsLoading(true);
+      // Simulate API call
       setTimeout(() => {
         const foundBaby = getBabyByParentUsername(babyId);
         if (foundBaby) {
           setBaby(foundBaby);
           if (foundBaby.sleepRecords && foundBaby.sleepRecords.length > 0) {
+            // Sort records by date descending to get the latest
             const sortedRecords = [...foundBaby.sleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             setLatestRecord(sortedRecords[0]);
           } else {
@@ -72,6 +80,10 @@ export default function ParentBabyPage() {
     }
   }, [babyId]);
 
+  /**
+   * Refreshes the `latestRecord` state based on the provided baby's sleep records.
+   * @param {Baby} updatedBaby - The baby object with potentially updated sleep records.
+   */
   const refreshLatestRecord = (updatedBaby: Baby) => {
     if (updatedBaby.sleepRecords && updatedBaby.sleepRecords.length > 0) {
       const sortedRecords = [...updatedBaby.sleepRecords].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -81,6 +93,11 @@ export default function ParentBabyPage() {
     }
   };
 
+  /**
+   * Handles submission of a new sleep record.
+   * Adds the new record to the baby's sleep records and updates state.
+   * @param {SleepRecordFormData} data - The submitted sleep record form data.
+   */
   const handleAddNewFormSubmit = (data: SleepRecordFormData) => {
     if (!baby) return;
     const newRecord: SleepRecord = {
@@ -95,15 +112,29 @@ export default function ParentBabyPage() {
         ...baby,
         sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
-    setBaby(updatedBaby);
+    // Note: In a real app, this would be an API call, and mockBabies in lib/mock-data.ts would be updated.
+    // For this mock setup, we update the local baby state. The actual mockBabies array isn't modified here
+    // unless this page also calls an updateBaby function from mock-data.ts upon submission.
+    // Assuming `updateBaby` in mock-data is eventually called, or this is for local display only.
+    setBaby(updatedBaby); 
     refreshLatestRecord(updatedBaby);
   };
 
+  /**
+   * Handles clicking the edit button for a sleep record.
+   * Sets the record to be edited and opens the edit dialog.
+   * @param {SleepRecord} record - The sleep record to edit.
+   */
   const handleEditRecordClick = (record: SleepRecord) => {
     setRecordToEdit(record);
     setIsEditDialogOpen(true);
   };
 
+  /**
+   * Handles submission of an edited sleep record.
+   * Updates the specific sleep record in the baby's data.
+   * @param {SleepRecordFormData} data - The updated sleep record form data.
+   */
   const handleEditFormSubmit = (data: SleepRecordFormData) => {
     if (!recordToEdit || !baby) return;
 
@@ -113,6 +144,7 @@ export default function ParentBabyPage() {
       date: format(data.date, "yyyy-MM-dd"),
       stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({
+        // Preserve existing sleep cycle IDs if possible, generate new if cycle count changes
         id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`, 
         bedtime: sc.bedtime,
         timeToSleep: sc.timeToSleep,
@@ -124,12 +156,13 @@ export default function ParentBabyPage() {
     
     const updatedSleepRecords = baby.sleepRecords?.map(sr =>
       sr.id === recordToEdit.id ? updatedRecord : sr
-    ) || [updatedRecord];
+    ) || [updatedRecord]; // Fallback if sleepRecords was undefined
     
     const updatedBaby = {
         ...baby,
         sleepRecords: updatedSleepRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
+    // Similar to adding, this updates local state. Ensure mock-data update if persistence is needed.
     setBaby(updatedBaby);
     refreshLatestRecord(updatedBaby);
 
@@ -137,21 +170,34 @@ export default function ParentBabyPage() {
     setRecordToEdit(null);
   };
   
+  /**
+   * Handles cancelling the edit operation from the dialog.
+   */
   const handleCancelEdit = () => {
     setIsEditDialogOpen(false);
     setRecordToEdit(null);
   };
 
+  /**
+   * Handles clicking the delete button for a sleep record.
+   * Sets the record ID to be deleted and opens the confirmation dialog.
+   * @param {string} recordId - The ID of the sleep record to delete.
+   */
   const handleDeleteRecordClick = (recordId: string) => {
     setRecordToDeleteId(recordId);
     setIsDeleteDialogOpen(true);
   };
 
+  /**
+   * Confirms and executes the deletion of a sleep record.
+   */
   const confirmDeleteRecord = () => {
     if (!baby || !recordToDeleteId) return;
 
-    const success = deleteSleepRecord(baby.id, recordToDeleteId);
+    // This calls the mock data function to persist the deletion
+    const success = deleteSleepRecord(baby.id, recordToDeleteId); 
     if (success) {
+      // Update local state to reflect the deletion
       const updatedRecords = baby.sleepRecords?.filter(sr => sr.id !== recordToDeleteId) || [];
       const updatedBaby = { ...baby, sleepRecords: updatedRecords };
       setBaby(updatedBaby);
@@ -171,7 +217,7 @@ export default function ParentBabyPage() {
     setRecordToDeleteId(null);
   };
 
-
+  // Loading state UI
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -181,6 +227,7 @@ export default function ParentBabyPage() {
     );
   }
 
+  // Baby not found UI
   if (!baby) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
@@ -199,6 +246,7 @@ export default function ParentBabyPage() {
     );
   }
 
+  // Main parent page UI
   return (
     <div className="container mx-auto py-8 px-4">
       <header className="mb-8 text-center">
@@ -206,10 +254,12 @@ export default function ParentBabyPage() {
         <p className="text-muted-foreground">ממשק הורים למעקב שינה</p>
       </header>
       
+      {/* Form to add new sleep data */}
       <SleepDataForm babyName={baby.name} onSubmitSuccess={handleAddNewFormSubmit} />
 
       <CoachRecommendationsDisplay notes={baby.coachNotes} />
 
+      {/* Display latest sleep record if available */}
       {latestRecord && (
         <Card className="mt-8 shadow-lg">
           <CardHeader>
@@ -227,10 +277,11 @@ export default function ParentBabyPage() {
                 <p className="text-sm"><strong>זמן להירדם:</strong> {cycle.timeToSleep}</p>
                 <p className="text-sm"><strong>מי הרדים:</strong> {cycle.whoPutToSleep}</p>
                 <p className="text-sm"><strong>איך נרדם:</strong> {cycle.howFellAsleep}</p>
-                <p className="text-sm"><strong>שעת יקיצה:</strong> {cycle.wakeTime}</p>
+                <p className="text-sm"><strong>שעת יקיצה:</strong> {cycle.wakeTime || '-'}</p>
               </div>
             ))}
             <div className="flex gap-2 mt-4">
+              {/* Edit Record Dialog */}
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
@@ -247,16 +298,17 @@ export default function ParentBabyPage() {
                   </DialogHeader>
                   {recordToEdit && baby && (
                     <SleepDataForm
-                      babyName={baby.name}
+                      babyName={baby.name} // Pass baby name for consistency if needed in form
                       initialData={recordToEdit}
                       onSubmitSuccess={handleEditFormSubmit}
                       onCancel={handleCancelEdit}
                       submitButtonText="עדכן רשומה"
-                      isDialog={true}
+                      isDialog={true} // Indicate form is in a dialog for layout adjustments
                     />
                   )}
                 </DialogContent>
               </Dialog>
+              {/* Delete Record Confirmation Dialog */}
               <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm" onClick={() => latestRecord && handleDeleteRecordClick(latestRecord.id)}>
@@ -273,7 +325,7 @@ export default function ParentBabyPage() {
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>ביטול</AlertDialogCancel>
+                    <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setRecordToDeleteId(null); }}>ביטול</AlertDialogCancel>
                     <AlertDialogAction onClick={confirmDeleteRecord}>מחק</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

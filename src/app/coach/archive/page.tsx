@@ -1,4 +1,7 @@
-
+/**
+ * @fileoverview Page for viewing and managing archived baby profiles.
+ * Coaches can unarchive babies or permanently delete them from this page.
+ */
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -30,8 +33,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "@/components/ui/alert-dialog"; // AlertDialogTrigger removed as it's used via Button onClick
 
 
 export default function ArchivePage() {
@@ -41,6 +43,10 @@ export default function ArchivePage() {
   const [babyToDelete, setBabyToDelete] = useState<Baby | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+  /**
+   * Fetches the list of archived babies from mock data.
+   * Simulates an API call with a timeout.
+   */
   const fetchArchivedBabies = useCallback(() => {
     setIsLoading(true);
     // Simulate API call
@@ -54,6 +60,11 @@ export default function ArchivePage() {
     fetchArchivedBabies();
   }, [fetchArchivedBabies]);
 
+  /**
+   * Handles unarchiving a baby.
+   * @param {string} babyId - The ID of the baby to unarchive.
+   * @param {string} babyName - The full name of the baby for toast messages.
+   */
   const handleUnarchive = (babyId: string, babyName: string) => {
     if (unarchiveBaby(babyId)) {
       toast({
@@ -70,11 +81,18 @@ export default function ArchivePage() {
     }
   };
 
+  /**
+   * Opens the confirmation dialog for permanent deletion.
+   * @param {Baby} baby - The baby object to be deleted.
+   */
   const openDeleteDialog = (baby: Baby) => {
     setBabyToDelete(baby);
     setIsDeleteDialogOpen(true);
   };
 
+  /**
+   * Confirms and executes the permanent deletion of a baby.
+   */
   const confirmDeleteBaby = () => {
     if (!babyToDelete) return;
     if (deleteBabyPermanently(babyToDelete.id)) {

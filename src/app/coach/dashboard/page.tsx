@@ -1,8 +1,11 @@
-
+/**
+ * @fileoverview Coach dashboard page.
+ * Displays a list of active babies, allows searching, and exporting data.
+ */
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Baby, SleepRecord, SleepCycle } from '@/lib/mock-data'; // Added imports for CSV
+import type { Baby, SleepRecord, SleepCycle } from '@/lib/mock-data';
 import { getActiveBabies } from '@/lib/mock-data';
 import DashboardHeader from '@/components/coach/dashboard-header';
 import BabyList from '@/components/coach/baby-list';
@@ -16,6 +19,10 @@ export default function CoachDashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
+  /**
+   * Fetches and sets the list of active babies.
+   * Simulates an API call.
+   */
   const fetchAndSetBabies = useCallback(() => {
     setIsLoading(true);
     // Simulate API call
@@ -31,6 +38,7 @@ export default function CoachDashboardPage() {
     fetchAndSetBabies();
   }, [fetchAndSetBabies]);
 
+  // Effect to filter babies based on search term
   useEffect(() => {
     const lowercasedFilter = searchTerm.toLowerCase();
     const filteredData = babies.filter(item =>
@@ -42,10 +50,18 @@ export default function CoachDashboardPage() {
     setFilteredBabies(filteredData);
   }, [searchTerm, babies]);
 
+  /**
+   * Updates the search term state.
+   * @param {string} term - The search term entered by the user.
+   */
   const handleSearch = (term: string) => {
     setSearchTerm(term);
   };
 
+  /**
+   * Handles exporting baby data to CSV files.
+   * Generates one CSV file per active baby.
+   */
   const handleExportCSV = () => {
     const babiesToExport = getActiveBabies(); 
     if (babiesToExport.length === 0) {
@@ -104,7 +120,7 @@ export default function CoachDashboardPage() {
                 wakeTime: cycle.wakeTime || '', 
               });
             });
-          } else {
+          } else { // If a record has no sleep cycles
             babyDataForCSV.push({
               date: record.date,
               stage: record.stage,
@@ -113,7 +129,7 @@ export default function CoachDashboardPage() {
             });
           }
         });
-      } else {
+      } else { // If a baby has no sleep records at all
         const emptyRow: any = {};
         Object.keys(csvHeaders).forEach(key => {
             emptyRow[key] = (key === 'date' ? 'אין נתוני שינה' : '');
@@ -122,6 +138,7 @@ export default function CoachDashboardPage() {
       }
       
       const csvString = convertToCSV(babyDataForCSV, csvHeaders);
+      // Add BOM for Excel to correctly interpret UTF-8 Hebrew characters
       const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
@@ -132,7 +149,7 @@ export default function CoachDashboardPage() {
       document.body.appendChild(link);
       link.click();
       
-      // Delay cleanup to ensure download initiation
+      // Delay cleanup to ensure download initiation for multiple files
       setTimeout(() => {
         if (link.parentElement) {
             document.body.removeChild(link);
@@ -146,6 +163,10 @@ export default function CoachDashboardPage() {
     }
   };
 
+  /**
+   * Handles exporting baby data to a PDF file (via browser print).
+   * Generates an HTML document with all baby data and triggers the print dialog.
+   */
   const handleExportPDF = () => {
     const babiesToExport = getActiveBabies();
     if (babiesToExport.length === 0) {
@@ -171,7 +192,7 @@ export default function CoachDashboardPage() {
                 margin-bottom: 20px;
               }
               .baby-section:last-child .page-break {
-                page-break-after: auto;
+                page-break-after: auto; /* No page break after the last baby */
                 border-bottom: none;
               }
               table { 
@@ -257,6 +278,7 @@ export default function CoachDashboardPage() {
 
     htmlContent += `</body></html>`;
 
+    // Use a hidden iframe to trigger print
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.width = '0';
@@ -320,4 +342,3 @@ export default function CoachDashboardPage() {
     </div>
   );
 }
-

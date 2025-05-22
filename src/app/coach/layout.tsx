@@ -1,4 +1,7 @@
-
+/**
+ * @fileoverview Layout for the coach section of the application.
+ * Includes a collapsible sidebar for navigation.
+ */
 "use client";
 
 import type { ReactNode } from 'react';
@@ -16,27 +19,30 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-import { Button } from "@/components/ui/button";
-import { LogOut, UserPlus, Users, Archive } from 'lucide-react'; // Removed FileText, FileSpreadsheet
+// Button import removed as it's not directly used here, SidebarMenuButton is used.
+import { LogOut, UserPlus, Users, Archive, FileSpreadsheet, FileText } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-// Removed imports for CSV export: getActiveBabies, type Baby, type SleepRecord, type SleepCycle
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
+  // Navigation items for the coach sidebar
   const navItems = [
     { href: "/coach/dashboard", label: "לוח בקרה", icon: Users },
     { href: "/coach/add-baby", label: "הוספת תינוק", icon: UserPlus },
     { href: "/coach/archive", label: "ארכיון", icon: Archive },
   ];
 
-  // Removed handleExportCSV function
+  const handlePlaceholderExport = (type: string) => {
+    alert(`פונקציית ייצוא ל-${type} עדיין בפיתוח.`);
+  };
 
   return (
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center justify-between p-2">
+             {/* AppLogo hides when sidebar is icon-only, SidebarTrigger remains */}
              <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
              <SidebarTrigger />
           </div>
@@ -56,11 +62,11 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
                 </Link>
               </SidebarMenuItem>
             ))}
-            {/* Export Buttons Removed */}
+            {/* Placeholder export buttons moved to dashboard header */}
           </SidebarMenu>
         </SidebarContent>
         <Separator className="my-2" />
-         <div className="p-2 mt-auto">
+         <div className="p-2 mt-auto"> {/* Footer section of sidebar */}
             <Link href="/" legacyBehavior passHref>
                  <SidebarMenuButton tooltip={{children: "התנתקות", side: 'right', align: 'center'}}>
                     <LogOut className="h-5 w-5" />
