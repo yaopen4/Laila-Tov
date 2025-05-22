@@ -8,12 +8,12 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { Baby, SleepRecord, SleepRecordFormData } from '@/lib/mock-data';
-import { getBabyByParentUsername, deleteSleepRecord } from '@/lib/mock-data'; 
+import { getBabyByParentUsername, deleteSleepRecord } from '@/lib/mock-data';
 import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, History, Edit3, Trash2, ListChecks } from 'lucide-react';
+import { AlertCircle, History, Edit3, Trash2, BookClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
@@ -25,8 +25,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  // DialogTrigger, // Not used directly, form has its own buttons or manual control
-  // DialogClose, // Not used directly, form cancellation handles closing
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -34,7 +32,7 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter, // Added AlertDialogFooter
+  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
@@ -57,9 +55,6 @@ export default function ParentBabyPage() {
   // State for delete confirmation dialog
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
-
-  // State for all history dialog
-  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
 
 
   // Effect to fetch baby data based on parentUsername (babyId from route)
@@ -109,10 +104,10 @@ export default function ParentBabyPage() {
       stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${Date.now()}-${index}`}))
     };
-    
+
     const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Ensure sort
-      
+
     const updatedBaby = {
         ...baby,
         sleepRecords: updatedSleepRecords
@@ -120,7 +115,7 @@ export default function ParentBabyPage() {
     // Note: In a real app, this would be an API call.
     // For mock setup, we update local state. Actual mockBabies array isn't modified here
     // unless this page also calls an updateBaby function from mock-data.ts upon submission.
-    setBaby(updatedBaby); 
+    setBaby(updatedBaby);
     refreshLatestRecord(updatedBaby);
   };
 
@@ -144,11 +139,11 @@ export default function ParentBabyPage() {
 
     const updatedRecord: SleepRecord = {
       ...recordToEdit,
-      id: recordToEdit.id, 
+      id: recordToEdit.id,
       date: format(data.date, "yyyy-MM-dd"),
       stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({
-        id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`, 
+        id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`,
         bedtime: sc.bedtime,
         timeToSleep: sc.timeToSleep,
         whoPutToSleep: sc.whoPutToSleep,
@@ -156,12 +151,12 @@ export default function ParentBabyPage() {
         wakeTime: sc.wakeTime,
       })),
     };
-    
+
     const updatedSleepRecords = (baby.sleepRecords?.map(sr =>
       sr.id === recordToEdit.id ? updatedRecord : sr
     ) || [updatedRecord])
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Ensure sort
-    
+
     const updatedBaby = {
         ...baby,
         sleepRecords: updatedSleepRecords
@@ -172,7 +167,7 @@ export default function ParentBabyPage() {
     setIsEditDialogOpen(false);
     setRecordToEdit(null);
   };
-  
+
   /**
    * Handles cancelling the edit operation from the dialog.
    */
@@ -198,7 +193,7 @@ export default function ParentBabyPage() {
     if (!baby || !recordToDeleteId) return;
 
     // This calls the mock data function to persist the deletion
-    const success = deleteSleepRecord(baby.id, recordToDeleteId); 
+    const success = deleteSleepRecord(baby.id, recordToDeleteId);
     if (success) {
       // Update local state to reflect the deletion
       const updatedRecords = baby.sleepRecords?.filter(sr => sr.id !== recordToDeleteId) || [];
@@ -261,7 +256,7 @@ export default function ParentBabyPage() {
           ממשק הורים למעקב שינה
         </p>
       </header>
-      
+
       {/* Form to add new sleep data */}
       <SleepDataForm babyName={baby.name} onSubmitSuccess={handleAddNewFormSubmit} />
 
@@ -291,7 +286,6 @@ export default function ParentBabyPage() {
             <div className="flex gap-2 mt-4">
               {/* Edit Record Dialog */}
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                {/* Button to trigger edit dialog */}
                 <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
                   <Edit3 className="me-2 h-4 w-4" />
                   ערוך רשומה
@@ -342,61 +336,46 @@ export default function ParentBabyPage() {
         </Card>
       )}
 
-      {/* Button to show all history */}
-      {baby.sleepRecords && baby.sleepRecords.length > 0 && (
-        <div className="mt-6 flex justify-center">
-          <Button variant="secondary" onClick={() => setIsHistoryDialogOpen(true)}>
-            <ListChecks className="me-2 h-4 w-4" />
-            הצג את כל ההיסטוריה
-          </Button>
+      {/* Display older sleep records if available */}
+      {baby.sleepRecords && baby.sleepRecords.length > 1 && (
+        <div className="mt-10">
+          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+            <BookClock className="h-6 w-6 text-primary" />
+            היסטוריית שינה קודמת
+          </h2>
+          <div className="space-y-6">
+            {baby.sleepRecords.slice(1).map(record => (
+              <Card key={record.id} className="shadow-md">
+                <CardHeader className="pb-3 pt-4 px-4">
+                  <CardTitle className="text-lg">
+                    {format(new Date(record.date), "PPP", { locale: he })} - (שלב: {record.stage})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 px-4 pb-4">
+                  {record.sleepCycles.length > 0 ? (
+                    record.sleepCycles.map((cycle, index) => (
+                      <div key={cycle.id || index} className="p-3 border rounded-md bg-background/50">
+                        <h4 className="font-semibold mb-1">מחזור שינה {index + 1}</h4>
+                        <p className="text-sm"><strong>שעת השכבה:</strong> {cycle.bedtime}</p>
+                        <p className="text-sm"><strong>זמן להירדם:</strong> {cycle.timeToSleep}</p>
+                        <p className="text-sm"><strong>מי הרדים:</strong> {cycle.whoPutToSleep}</p>
+                        <p className="text-sm"><strong>איך נרדם:</strong> {cycle.howFellAsleep}</p>
+                        <p className="text-sm"><strong>שעת יקיצה:</strong> {cycle.wakeTime || '-'}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">אין מחזורי שינה מתועדים לרשומה זו.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
+      {baby.sleepRecords && baby.sleepRecords.length === 0 && !latestRecord && (
+         <p className="text-center text-muted-foreground py-8 mt-8">אין היסטוריית שינה מתועדת עבור {baby.name}.</p>
+      )}
 
-      {/* Dialog for displaying all sleep history */}
-      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>היסטוריית שינה מלאה עבור {baby.name}</DialogTitle>
-            <DialogDescription>
-              כאן מוצגים כל רישומי השינה עבור {baby.name}, מהעדכני ביותר.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            {baby.sleepRecords && baby.sleepRecords.length > 0 ? (
-              baby.sleepRecords.map(record => (
-                <Card key={record.id} className="shadow-md">
-                  <CardHeader className="pb-3 pt-4 px-4">
-                    <CardTitle className="text-lg">
-                      {format(new Date(record.date), "PPP", { locale: he })} - (שלב: {record.stage})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 px-4 pb-4">
-                    {record.sleepCycles.length > 0 ? (
-                      record.sleepCycles.map((cycle, index) => (
-                        <div key={cycle.id || index} className="p-3 border rounded-md bg-background/50">
-                          <h4 className="font-semibold mb-1">מחזור שינה {index + 1}</h4>
-                          <p className="text-sm"><strong>שעת השכבה:</strong> {cycle.bedtime}</p>
-                          <p className="text-sm"><strong>זמן להירדם:</strong> {cycle.timeToSleep}</p>
-                          <p className="text-sm"><strong>מי הרדים:</strong> {cycle.whoPutToSleep}</p>
-                          <p className="text-sm"><strong>איך נרדם:</strong> {cycle.howFellAsleep}</p>
-                          <p className="text-sm"><strong>שעת יקיצה:</strong> {cycle.wakeTime || '-'}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">אין מחזורי שינה מתועדים לרשומה זו.</p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
-              <p className="text-center text-muted-foreground py-8">אין היסטוריית שינה מתועדת.</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>סגור</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <div className="mt-12 text-center">
         <Link href="/" passHref legacyBehavior>
@@ -407,3 +386,4 @@ export default function ParentBabyPage() {
   );
 }
 
+    
