@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview Reusable form component for adding or editing baby profiles.
  * Uses react-hook-form and Zod for validation.
@@ -21,8 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, Edit3 } from "lucide-react";
-import type { Baby } from "@/lib/mock-data"; // Assuming Baby type covers all fields
+import { UserPlus, Edit3, MessageSquareText } from "lucide-react";
+import type { Baby } from "@/lib/mock-data"; 
 import { useEffect } from "react";
 
 // Zod schema for form validation
@@ -36,7 +37,7 @@ const formSchema = z.object({
   siblingsNames: z.string().optional(),
   description: z.string().optional(),
   parentUsername: z.string().min(3, { message: "שם משתמש להורים חייב להכיל לפחות 3 תווים." }),
-  // coachNotes is not part of this form, managed separately
+  coachNotes: z.string().optional(), // Added coachNotes field
 });
 
 /**
@@ -60,7 +61,7 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
   const { toast } = useToast();
   const form = useForm<BabyFormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: { // Set default values based on initialData or empty strings/defaults
+    defaultValues: { 
       name: initialData?.name || "",
       familyName: initialData?.familyName || "",
       age: initialData?.age || 0,
@@ -70,10 +71,15 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
       siblingsNames: initialData?.siblingsNames || "",
       description: initialData?.description || "",
       parentUsername: initialData?.parentUsername || "",
+      coachNotes: initialData?.coachNotes || "", // Initialize coachNotes
     },
   });
 
-  // Effect to reset form fields when initialData changes (e.g., when switching to edit a different baby)
+  /**
+   * Effect to reset form fields when initialData changes.
+   * This is useful if the same form instance is used for editing different babies,
+   * or if initialData loads asynchronously.
+   */
   useEffect(() => {
     if (initialData) {
       form.reset({
@@ -86,10 +92,10 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
         siblingsNames: initialData.siblingsNames || "",
         description: initialData.description || "",
         parentUsername: initialData.parentUsername || "",
-        // Ensure coachNotes is not reset here as it's not part of this form's schema
+        coachNotes: initialData.coachNotes || "", // Reset coachNotes
       });
     }
-  }, [initialData, form]); // form.reset is a stable function, but including form is a common pattern
+  }, [initialData, form]); 
 
   /**
    * Handles the actual form submission.
@@ -98,18 +104,20 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
    * @param {BabyFormData} values - The validated form data.
    */
   function onSubmit(values: BabyFormData) {
-    onSubmitProp(values, initialData?.id); // Pass baby's ID if in edit mode
-    toast({
-      title: isEditMode ? "פרטי תינוק עודכנו!" : "תינוק נוסף בהצלחה!",
-      description: isEditMode 
-        ? `הפרופיל של ${values.name} ${values.familyName} עודכן.`
-        : `הפרופיל של ${values.name} ${values.familyName} נוצר.`,
-    });
+    onSubmitProp(values, initialData?.id); 
+    // Toast is usually handled by the parent page after successful submission
+    // to provide more context. If keeping toast here, ensure it's desired.
+    // toast({
+    //   title: isEditMode ? "פרטי תינוק עודכנו!" : "תינוק נוסף בהצלחה!",
+    //   description: isEditMode 
+    //     ? `הפרופיל של ${values.name} ${values.familyName} עודכן.`
+    //     : `הפרופיל של ${values.name} ${values.familyName} נוצר.`,
+    // });
     if (!isEditMode) {
-      // Reset form to default empty values only when adding a new baby
       form.reset({ 
         name: "", familyName: "", age: 0, motherName: "", fatherName: "",
-        siblingsCount: 0, siblingsNames: "", description: "", parentUsername: ""
+        siblingsCount: 0, siblingsNames: "", description: "", parentUsername: "",
+        coachNotes: "" // Reset coachNotes for new entry
       });
     }
   }
@@ -172,7 +180,6 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
                   <FormItem>
                     <FormLabel>שם משתמש להורים</FormLabel>
                     <FormControl>
-                      {/* Parent username is disabled in edit mode as it's an identifier */}
                       <Input placeholder="שם משתמש ייחודי" {...field} disabled={isEditMode} />
                     </FormControl>
                     <FormDescription>
@@ -248,6 +255,31 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
                 </FormItem>
               )}
             />
+            {/* Coach Notes Field - visible in edit mode, or always if desired */}
+            {/* For now, let's make it always visible as coaches might add notes during creation too */}
+             <FormField
+              control={form.control}
+              name="coachNotes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1">
+                    <MessageSquareText className="h-4 w-4" />
+                    הערות מאמן/ת (אופציונלי)
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="המלצות, תוכנית פעולה, דגשים להורים..."
+                      {...field}
+                      rows={4}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    הערות אלו יוצגו להורים בממשק שלהם.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <Button type="submit" className="w-full md:w-auto">
               {isEditMode ? "עדכן פרטי תינוק" : "הוסף תינוק"}
             </Button>
@@ -257,3 +289,5 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
     </Card>
   );
 }
+
+    
