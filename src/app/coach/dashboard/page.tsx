@@ -310,21 +310,23 @@ export default function CoachDashboardPage() {
   if (isLoading) {
     return (
       <div>
-        <DashboardHeader 
-          onSearch={handleSearch} 
-          onExportCSV={() => {}} // Placeholder while loading
-          onExportPDF={() => {}} // Placeholder while loading
-        />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="p-4 border rounded-lg shadow">
-              <Skeleton className="h-8 w-3/4 mb-2" />
-              <Skeleton className="h-4 w-1/2 mb-4" />
-              <Skeleton className="h-4 w-full mb-1" />
-              <Skeleton className="h-4 w-full mb-1" />
-              <Skeleton className="h-10 w-1/3 mt-4 ms-auto" />
-            </div>
-          ))}
+        <div className="max-w-7xl mx-auto">
+          <DashboardHeader 
+            onSearch={handleSearch} 
+            onExportCSV={() => {}} // Placeholder while loading
+            onExportPDF={() => {}} // Placeholder while loading
+          />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="p-4 border rounded-lg shadow">
+                <Skeleton className="h-8 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2 mb-4" />
+                <Skeleton className="h-4 w-full mb-1" />
+                <Skeleton className="h-4 w-full mb-1" />
+                <Skeleton className="h-10 w-1/3 mt-4 ms-auto" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -335,12 +337,15 @@ export default function CoachDashboardPage() {
     // The root div of the page content.
     // Height management is now handled by SidebarInset and its parent flex container.
     <div>
-      <DashboardHeader 
-        onSearch={handleSearch} 
-        onExportCSV={handleExportCSV}
-        onExportPDF={handleExportPDF}
-      />
-      <BabyList babies={filteredBabies} />
+      <div className="max-w-7xl mx-auto">
+        <DashboardHeader 
+          onSearch={handleSearch} 
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+        />
+        <BabyList babies={filteredBabies} />
+      </div>
     </div>
   );
 }
+
