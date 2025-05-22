@@ -38,9 +38,9 @@ const sleepCycleSchema = z.object({
   whoPutToSleep: z.string().min(1, { message: "שדה חובה." }),
   howFellAsleep: z.string().min(1, { message: "שדה חובה." }),
   wakeTime: z.string()
-    .optional() // Make wakeTime optional
-    .refine(val => val === undefined || val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), { 
-      message: "פורמט שעה לא תקין (HH:MM), או השאר ריק." 
+    .optional()
+    .refine(val => val === undefined || val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), {
+      message: "פורמט שעה לא תקין (HH:MM), או השאר ריק."
     }),
 });
 
@@ -74,13 +74,13 @@ interface SleepDataFormProps {
   isDialog?: boolean;
 }
 
-export function SleepDataForm({ 
-  babyName, 
-  onSubmitSuccess, 
-  initialData = null, 
-  onCancel, 
-  submitButtonText, 
-  isDialog = false 
+export function SleepDataForm({
+  babyName,
+  onSubmitSuccess,
+  initialData = null,
+  onCancel,
+  submitButtonText,
+  isDialog = false
 }: SleepDataFormProps) {
   const { toast } = useToast();
   const form = useForm<SleepRecordFormData>({
@@ -119,7 +119,7 @@ export function SleepDataForm({
           wakeTime: sc.wakeTime || "",
         })),
       });
-    } else if (!isDialog) { 
+    } else if (!isDialog) {
       // Only reset to completely blank if not in a dialog and not initialData
       // This prevents dialog form from clearing if it's re-rendered without initialData temporarily
       form.reset({
@@ -147,7 +147,7 @@ export function SleepDataForm({
       description: `הנתונים עבור ${babyName} ${initialData ? 'עודכנו' : 'נשלחו'} בהצלחה.`,
     });
     if (onSubmitSuccess) onSubmitSuccess(values);
-    if (!initialData && !isDialog) { 
+    if (!initialData && !isDialog) {
       // Reset form only for new entries not in a dialog, to allow user to enter another record.
       // For edits or dialogs, parent component usually handles closing/clearing.
       form.reset({
@@ -157,7 +157,7 @@ export function SleepDataForm({
       });
     }
   }
-  
+
   // Dynamically choose Card or div as the root component based on whether it's in a dialog
   const CardComponent = isDialog ? 'div' : Card;
   const cardComponentProps = isDialog ? {} : { className: "w-full max-w-2xl mx-auto shadow-xl" };
@@ -236,11 +236,23 @@ export function SleepDataForm({
             <div className="space-y-6">
               <h3 className="text-lg font-medium border-b pb-2">מחזורי שינה</h3>
               {fields.map((item, index) => (
-                <Card key={item.id} className="p-4 relative bg-background shadow-md">
-                  <CardHeader className="p-0 mb-4">
+                <Card key={item.id} className="bg-background shadow-md">
+                  <CardHeader className="p-4 flex items-center justify-between border-b">
                      <CardTitle className="text-md">מחזור שינה {index + 1}</CardTitle>
+                     {fields.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          className="text-destructive hover:bg-destructive/10"
+                          aria-label="מחק מחזור שינה"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                     )}
                   </CardHeader>
-                  <CardContent className="p-0 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                  <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <FormField
                       control={form.control}
                       name={`sleepCycles.${index}.bedtime`}
@@ -307,18 +319,6 @@ export function SleepDataForm({
                       )}
                     />
                   </CardContent>
-                  {fields.length > 1 && ( // Show delete button only if more than one cycle exists
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => remove(index)}
-                    className="absolute top-2 start-2 text-destructive hover:bg-destructive/10"
-                    aria-label="מחק מחזור שינה"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                  )}
                 </Card>
               ))}
               <Button
