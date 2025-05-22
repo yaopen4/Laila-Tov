@@ -253,12 +253,12 @@ export default function ParentBabyPage() {
   return (
     <div className="container mx-auto py-8 px-4">
       <header className="mb-8 text-center">
-        <AppLogo className="mb-2 text-4xl" />
-        {baby && (
-          <p className="text-xl text-foreground">
-            לילה טוב, {baby.familyName}
-          </p>
-        )}
+        <h1 className="text-4xl font-bold mb-1">
+          <span className="text-primary">לילה</span> <span className="text-accent">טוב</span> <span className="text-primary">משפחת {baby.familyName}</span>
+        </h1>
+        <p className="text-lg text-muted-foreground">
+          ממשק הורים למעקב שינה
+        </p>
       </header>
       
       {/* Form to add new sleep data */}
