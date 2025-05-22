@@ -52,7 +52,8 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon">
         <SidebarHeader>
-          <div className="flex items-center justify-between p-2">
+          {/* Removed p-2 from this div as SidebarHeader already has padding */}
+          <div className="flex items-center justify-between"> 
              <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
              <SidebarTrigger />
           </div>
@@ -85,9 +86,8 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
             </SidebarMenuButton>
         </div>
       </Sidebar>
-      <SidebarInset className="bg-background p-4 md:p-6 overflow-auto">
-        {/* SidebarInset is already a <main> tag. Padding and overflow are applied here.
-            It has min-h-svh and flex-1, so it will manage its height and width. */}
+      {/* Added min-w-0 to help flexbox correctly size the content area */}
+      <SidebarInset className="bg-background p-4 md:p-6 overflow-auto min-w-0">
         {children}
       </SidebarInset>
     </SidebarProvider>
