@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview Parent-facing page for a specific baby.
  * Allows parents to log sleep data, view coach recommendations, and manage recent sleep records.
@@ -33,7 +34,7 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  // AlertDialogFooter, // Used in specific delete dialog
+  AlertDialogFooter, // Added AlertDialogFooter
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
@@ -400,4 +401,3 @@ export default function ParentBabyPage() {
     </div>
   );
 }
-
