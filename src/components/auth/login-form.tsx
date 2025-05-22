@@ -1,3 +1,4 @@
+// src/components/auth/login-form.tsx
 "use client";
 
 import type { FC } from 'react';
@@ -10,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
+import { login as authLogin } from '@/lib/auth-service'; // Import the auth service
 
 const LoginForm: FC = () => {
   const [username, setUsername] = useState('');
@@ -24,9 +26,11 @@ const LoginForm: FC = () => {
     setTimeout(() => {
       setIsLoading(false);
       if (username.toLowerCase() === 'coach') {
+        authLogin(username.toLowerCase(), 'coach'); // Use authService
         toast({ title: "התחברות הצליחה", description: "ברוך הבא, מאמן/ת!" });
         router.push('/coach/dashboard');
       } else if (username) { // Any other username is a parent
+        authLogin(username, 'parent'); // Use authService
         toast({ title: "התחברות הצליחה", description: `ברוך הבא, ${username}!` });
         router.push(`/parent/${username}`); // Use username as a mock babyId
       } else {

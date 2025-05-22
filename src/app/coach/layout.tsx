@@ -1,12 +1,13 @@
 /**
  * @fileoverview Layout for the coach section of the application.
- * Includes a collapsible sidebar for navigation.
+ * Includes a collapsible sidebar for navigation and route protection.
  */
 "use client";
 
 import type { ReactNode } from 'react';
+import { useEffect } from 'react'; // Added useEffect
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation'; // Added useRouter
 import {
   SidebarProvider,
   Sidebar,
@@ -19,12 +20,21 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-// Button import removed as it's not directly used here, SidebarMenuButton is used.
 import { LogOut, UserPlus, Users, Archive, FileSpreadsheet, FileText } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { isCoach, logout as authLogout } from '@/lib/auth-service'; // Import auth service
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // Route protection: Redirect to login if not authenticated as coach
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !isCoach()) {
+      router.push('/');
+    }
+  }, [router]);
+
 
   // Navigation items for the coach sidebar
   const navItems = [
@@ -33,16 +43,22 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
     { href: "/coach/archive", label: "ארכיון", icon: Archive },
   ];
 
+  const handleLogout = () => {
+    authLogout();
+    router.push('/');
+  };
+
+  // Placeholder for export functionality
   const handlePlaceholderExport = (type: string) => {
     alert(`פונקציית ייצוא ל-${type} עדיין בפיתוח.`);
   };
+
 
   return (
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center justify-between p-2">
-             {/* AppLogo hides when sidebar is icon-only, SidebarTrigger remains */}
              <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
              <SidebarTrigger />
           </div>
@@ -62,17 +78,17 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
                 </Link>
               </SidebarMenuItem>
             ))}
-            {/* Placeholder export buttons moved to dashboard header */}
           </SidebarMenu>
         </SidebarContent>
         <Separator className="my-2" />
          <div className="p-2 mt-auto"> {/* Footer section of sidebar */}
-            <Link href="/" legacyBehavior passHref>
-                 <SidebarMenuButton tooltip={{children: "התנתקות", side: 'right', align: 'center'}}>
-                    <LogOut className="h-5 w-5" />
-                    <span>התנתקות</span>
-                </SidebarMenuButton>
-            </Link>
+            <SidebarMenuButton 
+              onClick={handleLogout} 
+              tooltip={{children: "התנתקות", side: 'right', align: 'center'}}
+            >
+              <LogOut className="h-5 w-5" />
+              <span>התנתקות</span>
+            </SidebarMenuButton>
         </div>
       </Sidebar>
       <SidebarInset className="bg-background">

@@ -1,8 +1,7 @@
-
-
 /**
  * @fileoverview Parent-facing page for a specific baby.
  * Allows parents to log sleep data, view coach recommendations, and manage recent sleep records.
+ * Includes route protection.
  */
 "use client";
 
@@ -39,16 +38,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { isParent, logout as authLogout } from '@/lib/auth-service'; // Import auth service
 
 
 export default function ParentBabyPage() {
   const params = useParams();
+  const router = useRouter(); // Added useRouter
   const babyId = params.babyId as string; // This is actually the parentUsername from routing
   const [baby, setBaby] = useState<Baby | null>(null);
   const [latestRecord, setLatestRecord] = useState<SleepRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-  const router = useRouter();
 
   // State for edit dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -62,9 +62,14 @@ export default function ParentBabyPage() {
   const [showFullHistory, setShowFullHistory] = useState(false);
 
 
-  // Effect to fetch baby data based on parentUsername (babyId from route)
+  // Route protection and data fetching
   useEffect(() => {
-    if (babyId) {
+    if (typeof window !== 'undefined' && babyId) {
+      if (!isParent(babyId)) {
+        router.push('/');
+        return;
+      }
+
       setIsLoading(true);
       // Simulate API call
       setTimeout(() => {
@@ -77,11 +82,16 @@ export default function ParentBabyPage() {
           } else {
             setLatestRecord(null);
           }
+        } else {
+          // Baby not found for this parentUsername, redirect to login
+           authLogout(); // Clear any invalid session
+           router.push('/');
         }
         setIsLoading(false);
       }, 500);
     }
-  }, [babyId]);
+  }, [babyId, router]);
+
 
   /**
    * Refreshes the `latestRecord` state based on the provided baby's sleep records.
@@ -220,6 +230,12 @@ export default function ParentBabyPage() {
     setRecordToDeleteId(null);
   };
 
+  const handleLogout = () => {
+    authLogout();
+    router.push('/');
+  };
+
+
   // Loading state UI
   if (isLoading) {
     return (
@@ -230,21 +246,19 @@ export default function ParentBabyPage() {
     );
   }
 
-  // Baby not found UI
+  // Baby not found UI (or not authorized)
   if (!baby) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
         <AppLogo className="mb-8 text-4xl" />
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
-        <h1 className="text-2xl font-semibold mb-2">אופס! לא נמצא תינוק.</h1>
+        <h1 className="text-2xl font-semibold mb-2">אופס! גישה נדחתה או שלא נמצא תינוק.</h1>
         <p className="text-muted-foreground mb-6">
-          לא הצלחנו למצוא את פרטי התינוק המשויכים לשם המשתמש שהוזן.
+          לא הצלחנו למצוא את פרטי התינוק המשויכים או שאין לך הרשאה לצפות בדף זה.
           <br />
           נא לוודא ששם המשתמש נכון או לפנות למאמן/ת השינה.
         </p>
-        <Link href="/" passHref legacyBehavior>
-          <Button>חזרה למסך הכניסה</Button>
-        </Link>
+        <Button onClick={handleLogout}>חזרה למסך הכניסה</Button>
       </div>
     );
   }
@@ -400,11 +414,8 @@ export default function ParentBabyPage() {
 
 
       <div className="mt-12 text-center">
-        <Link href="/" passHref legacyBehavior>
-          <Button variant="link">התנתקות וחזרה למסך הכניסה</Button>
-        </Link>
+         <Button variant="link" onClick={handleLogout}>התנתקות וחזרה למסך הכניסה</Button>
       </div>
     </div>
   );
 }
-
