@@ -5,6 +5,7 @@ import { format } from 'date-fns';
  * @fileoverview Mock data and related functions for the Laila Tov application.
  * NOTE: This is in-memory mock data and is not suitable for production use.
  * It does not persist data and is reset on each application reload.
+ * Security Note: This in-memory data store is not secure for production.
  */
 
 /**
@@ -59,7 +60,7 @@ export interface Baby {
   siblingsNames?: string;
   /** Optional general description about the baby (e.g., temperament, current sleep habits). */
   description?: string;
-  /** Username for parents to log in and view/edit this baby's data. */
+  /** Username for parents to log in and view/edit this baby's data. Must be unique. */
   parentUsername: string;
   /** Array of sleep records, sorted with the latest first. */
   sleepRecords?: SleepRecord[];
@@ -95,7 +96,7 @@ export let mockBabies: Baby[] = [
     sleepRecords: [
       {
         id: "sr1",
-        date: "2024-07-20", // Latest record for this baby
+        date: "2024-07-20",
         sleepCycles: [
           { id: "sc1", bedtime: "19:00", timeToSleep: "30 דקות", whoPutToSleep: "אמא", howFellAsleep: "הנקה", wakeTime: "06:00" },
           { id: "sc2", bedtime: "10:00", timeToSleep: "15 דקות", whoPutToSleep: "אבא", howFellAsleep: "נענוע קל", wakeTime: "11:30" },
@@ -210,6 +211,20 @@ export const getBabyById = (id: string): Baby | undefined => {
 };
 
 /**
+ * Checks if a parent username is already taken by another baby.
+ * This check is case-insensitive.
+ * @param {string} username - The username to check.
+ * @param {string} [currentBabyId] - Optional. If provided, this baby ID will be excluded from the check (used when editing a baby to allow them to keep their own username).
+ * @returns {boolean} True if the username is taken, false otherwise.
+ */
+export const isParentUsernameTaken = (username: string, currentBabyId?: string): boolean => {
+  return mockBabies.some(
+    baby => baby.parentUsername.toLowerCase() === username.toLowerCase() && baby.id !== currentBabyId && !baby.isArchived
+  );
+};
+
+
+/**
  * Type definition for data used when adding a new baby.
  * Excludes fields that are auto-generated or managed internally.
  */
@@ -219,6 +234,7 @@ export type AddBabyData = Omit<Baby, 'id' | 'sleepRecords' | 'isArchived' | 'las
 /**
  * Adds a new baby to the mock data.
  * Generates a simple ID, initializes empty sleep records, sets default status, and `lastModified`.
+ * Does NOT check for username uniqueness here; that should be done before calling this function.
  * @param {AddBabyData} babyData - The baby's data.
  * @returns {Baby} The newly created baby object.
  */
@@ -244,9 +260,15 @@ export const addBaby = (babyData: AddBabyData): Baby => {
 export const updateBaby = (updatedBabyData: Partial<Baby> & Pick<Baby, 'id'>): boolean => {
   const index = mockBabies.findIndex(baby => baby.id === updatedBabyData.id);
   if (index !== -1) {
+    // Ensure parentUsername is not accidentally cleared if not provided in partial update
+    const newParentUsername = updatedBabyData.parentUsername !== undefined 
+      ? updatedBabyData.parentUsername 
+      : mockBabies[index].parentUsername;
+
     mockBabies[index] = {
         ...mockBabies[index],
         ...updatedBabyData,
+        parentUsername: newParentUsername, // Explicitly set username
         lastModified: getCurrentISODate()
     };
     sortSleepRecords(mockBabies[index]);
@@ -341,7 +363,8 @@ export const deleteSleepRecord = (babyId: string, recordId: string): boolean => 
   }
 
   baby.sleepRecords.splice(recordIndex, 1);
-  mockBabies[babyIndex] = { ...baby, lastModified: getCurrentISODate() }; // Update the baby object in the array
+  // Update the baby object in the array by creating a new object reference to trigger potential re-renders if state relies on object identity.
+  mockBabies[babyIndex] = { ...baby, lastModified: getCurrentISODate(), sleepRecords: [...baby.sleepRecords] };
   sortSleepRecords(mockBabies[babyIndex]); // Re-sort after modification
   return true;
 };
