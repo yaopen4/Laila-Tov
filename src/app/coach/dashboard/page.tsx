@@ -1,6 +1,6 @@
 
 /**
- * @fileoverview Coach dashboard page.
+ * @fileoverview Consultant dashboard page.
  * Displays a list of active babies, allows searching, and exporting data.
  */
 "use client";
@@ -307,7 +307,7 @@ export default function CoachDashboardPage() {
           <h2>גיל: ${escapeHtml(String(baby.age))} חודשים</h2>
           <h3>פרטי הורים: אם - ${escapeHtml(baby.motherName)}, אב - ${escapeHtml(baby.fatherName)}</h3>
           ${baby.description ? `<p><strong>תיאור:</strong> ${escapeHtml(baby.description)}</p>` : ''}
-          ${baby.coachNotes ? `<p><strong>הערות מאמן/ת:</strong> ${escapeHtml(baby.coachNotes)}</p>` : ''}
+          ${baby.coachNotes ? `<p><strong>הערות היועצת:</strong> ${escapeHtml(baby.coachNotes)}</p>` : ''}
       `;
 
       if (baby.sleepRecords && baby.sleepRecords.length > 0) {
@@ -509,4 +509,3 @@ export default function CoachDashboardPage() {
     </div>
   );
 }
-

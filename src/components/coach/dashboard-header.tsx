@@ -1,6 +1,6 @@
 
 /**
- * @fileoverview Header component for the coach's dashboard.
+ * @fileoverview Header component for the consultant's dashboard.
  * Includes a title, search input, and buttons for data export actions.
  */
 "use client";
@@ -21,13 +21,13 @@ interface DashboardHeaderProps {
 }
 
 /**
- * Renders the header for the coach's dashboard.
+ * Renders the header for the consultant's dashboard.
  * @param {DashboardHeaderProps} props - The component's props.
  */
 const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onOpenExportDialog }) => {
   return (
     <div className="mb-6">
-      <h1 className="text-3xl font-bold mb-4 text-primary">לוח בקרה למאמן/ת</h1>
+      <h1 className="text-3xl font-bold mb-4 text-primary">לוח בקרה ליועצת</h1>
       <div className="flex flex-col md:flex-row gap-4 items-center">
         <div className="relative flex-grow w-full md:w-auto">
           <Input

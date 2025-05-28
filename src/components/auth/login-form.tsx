@@ -28,7 +28,7 @@ const LoginForm: FC = () => {
       setIsLoading(false);
       if (username.toLowerCase() === 'coach') {
         authLogin(username.toLowerCase(), 'coach'); // Use authService
-        toast({ title: "התחברות הצליחה", description: "ברוך הבא, מאמן/ת!" });
+        toast({ title: "התחברות הצליחה", description: "ברוכה הבאה, יועצת!" });
         router.push('/coach/dashboard');
       } else if (username) { // Any other username is a parent
         authLogin(username, 'parent'); // Use authService

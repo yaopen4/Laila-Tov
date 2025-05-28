@@ -1,7 +1,7 @@
 
 /**
  * @fileoverview Parent-facing page for a specific baby.
- * Allows parents to log sleep data, view coach recommendations, and manage recent sleep records.
+ * Allows parents to log sleep data, view consultant recommendations, and manage recent sleep records.
  * Includes route protection.
  */
 "use client";
@@ -238,7 +238,7 @@ export default function ParentBabyPage() {
         <p className="text-muted-foreground mb-6">
           לא הצלחנו למצוא את פרטי התינוק המשויכים או שאין לך הרשאה לצפות בדף זה.
           <br />
-          נא לוודא ששם המשתמש נכון או לפנות למאמן/ת השינה.
+          נא לוודא ששם המשתמש נכון או לפנות ליועצת השינה.
         </p>
         <Button onClick={handleLogout}>חזרה למסך הכניסה</Button>
       </div>

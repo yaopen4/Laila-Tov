@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
@@ -9,7 +10,7 @@ const geistMono = GeistMono;
 
 export const metadata: Metadata = {
   title: 'לילה טוב - מעקב שינה לתינוקות',
-  description: 'אפליקציה למעקב שינה לתינוקות עבור מאמנות שינה והורים',
+  description: 'אפליקציה למעקב שינה לתינוקות עבור יועצות שינה והורים',
 };
 
 export default function RootLayout({

@@ -37,7 +37,7 @@ const formSchema = z.object({
   siblingsNames: z.string().optional(),
   description: z.string().optional(),
   parentUsername: z.string().min(3, { message: "שם משתמש להורים חייב להכיל לפחות 3 תווים." }),
-  coachNotes: z.string().optional(), // Notes added by the coach, visible to parents.
+  coachNotes: z.string().optional(), // Notes added by the consultant, visible to parents.
 });
 
 /**
@@ -262,7 +262,7 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
                 <FormItem>
                   <FormLabel className="flex items-center gap-1">
                     <MessageSquareText className="h-4 w-4" />
-                    הערות מאמן/ת (אופציונלי)
+                    הערות יועצת (אופציונלי)
                   </FormLabel>
                   <FormControl>
                     <Textarea

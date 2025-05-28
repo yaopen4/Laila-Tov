@@ -1,6 +1,7 @@
+
 /**
  * @fileoverview Page for viewing and managing archived baby profiles.
- * Coaches can unarchive babies or permanently delete them from this page.
+ * Consultants can unarchive babies or permanently delete them from this page.
  */
 "use client";
 

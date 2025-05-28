@@ -1,8 +1,8 @@
 
 /**
- * @fileoverview Layout for the coach section of the application.
+ * @fileoverview Layout for the consultant section of the application.
  * Includes a collapsible sidebar for navigation and implements client-side route protection
- * to ensure only authenticated coaches can access these routes.
+ * to ensure only authenticated consultants can access these routes.
  */
 "use client";
 
@@ -31,7 +31,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   // Client-side route protection:
-  // Redirect to login if not authenticated as a coach.
+  // Redirect to login if not authenticated as a coach (consultant).
   // This runs on component mount and whenever the router object changes.
   useEffect(() => {
     // Ensure this check runs only in the browser
@@ -40,7 +40,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
     }
   }, [router]); // Dependency array ensures this runs if router instance changes
 
-  // Navigation items for the coach sidebar
+  // Navigation items for the consultant sidebar
   const navItems = [
     { href: "/coach/dashboard", label: "לוח בקרה", icon: Users },
     { href: "/coach/add-baby", label: "הוספת תינוק", icon: UserPlus },

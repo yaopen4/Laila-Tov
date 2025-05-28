@@ -64,7 +64,7 @@ export interface Baby {
   parentUsername: string;
   /** Array of sleep records, sorted with the latest first. */
   sleepRecords?: SleepRecord[];
-  /** Notes from the sleep coach, visible to parents. */
+  /** Notes from the sleep consultant, visible to parents. */
   coachNotes?: string;
   /** Flag indicating if the baby's profile is archived. */
   isArchived: boolean;
@@ -99,7 +99,6 @@ export let mockBabies: Baby[] = [
         date: "2024-07-20",
         sleepCycles: [
           { id: "sc1", bedtime: "19:00", timeToSleep: "30 דקות", whoPutToSleep: "אמא", howFellAsleep: "הנקה", wakeTime: "06:00" },
-          { id: "sc2", bedtime: "10:00", timeToSleep: "15 דקות", whoPutToSleep: "אבא", howFellAsleep: "נענוע קל", wakeTime: "11:30" },
         ],
       },
       {
