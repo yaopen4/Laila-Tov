@@ -179,6 +179,7 @@ export default function CoachDashboardPage() {
               });
             });
           } else {
+            // If a sleep record has no cycles (should ideally not happen with current form validation)
             babyDataForCSV.push({
               date: record.date,
               cycleNumber: '-', bedtime: '-', timeToSleep: '-',
@@ -187,6 +188,7 @@ export default function CoachDashboardPage() {
           }
         });
       } else {
+        // If baby has no sleep records at all
         const emptyRow: any = {};
         Object.keys(csvHeaders).forEach(key => {
             emptyRow[key] = (key === 'date' ? 'אין נתוני שינה' : '');
@@ -195,7 +197,7 @@ export default function CoachDashboardPage() {
       }
       
       const csvString = convertToCSV(babyDataForCSV, csvHeaders);
-      const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); // Added BOM for Excel
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
@@ -205,6 +207,7 @@ export default function CoachDashboardPage() {
       document.body.appendChild(link);
       link.click();
       
+      // Delay removal slightly to ensure download initiation
       setTimeout(() => {
         if (link.parentElement) {
             document.body.removeChild(link);
@@ -227,7 +230,8 @@ export default function CoachDashboardPage() {
     }
 
     let htmlContent = `
-      <html>
+      <!DOCTYPE html>
+      <html dir="rtl" lang="he">
         <head>
           <meta charset="UTF-8">
           <title>נתוני תינוקות - לילה טוב</title>
@@ -236,16 +240,19 @@ export default function CoachDashboardPage() {
               body { 
                 font-family: Arial, sans-serif; 
                 direction: rtl;
+                margin: 20px;
               }
-              .page-break { 
+              .baby-section { 
                 page-break-after: always; 
                 border-bottom: 1px dashed #ccc;
                 padding-bottom: 20px;
                 margin-bottom: 20px;
               }
-              .baby-section:last-child .page-break {
+              .baby-section:last-child {
                 page-break-after: auto;
                 border-bottom: none;
+                margin-bottom: 0;
+                padding-bottom: 0;
               }
               table { 
                 width: 100%; 
@@ -265,12 +272,12 @@ export default function CoachDashboardPage() {
                 text-align: right; 
                 color: #333;
               }
-              h1 { font-size: 24px; margin-bottom: 5px;}
+              h1 { font-size: 22px; margin-bottom: 5px;}
               h2 { font-size: 18px; margin-bottom: 3px; color: #555;}
               h3 { font-size: 16px; margin-bottom: 3px; color: #555;}
               h4 { font-size: 14px; margin-top: 15px; margin-bottom: 5px; color: #777;}
-              p { text-align: right; }
-              .no-records { font-style: italic; color: #888; }
+              p { text-align: right; margin: 5px 0; }
+              .no-records { font-style: italic; color: #888; margin-top: 10px; }
             }
           </style>
         </head>
@@ -279,7 +286,7 @@ export default function CoachDashboardPage() {
 
     babiesToExport.forEach(baby => {
       htmlContent += `
-        <div class="baby-section page-break">
+        <div class="baby-section">
           <h1>תינוק: ${baby.name} ${baby.familyName}</h1>
           <h2>גיל: ${baby.age} חודשים</h2>
           <h3>פרטי הורים: אם - ${baby.motherName}, אב - ${baby.fatherName}</h3>
@@ -325,34 +332,42 @@ export default function CoachDashboardPage() {
       } else {
         htmlContent += `<p class="no-records">אין נתוני שינה זמינים לתינוק זה.</p>`;
       }
-      htmlContent += `</div>`;
+      htmlContent += `</div>`; // End of .baby-section
     });
 
     htmlContent += `</body></html>`;
 
     const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.opacity = '0';
+    // Styles to make it non-intrusive but printable
+    iframe.style.position = 'absolute';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.left = '-9999px'; // Position off-screen
+    iframe.style.border = 'none'; // No border
+    iframe.style.visibility = 'hidden'; // Hide it
+
     document.body.appendChild(iframe);
 
     iframe.srcdoc = htmlContent;
     iframe.onload = function() {
       try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        toast({ title: 'ייצוא PDF מוכן', description: 'מסמך ה-PDF מוכן להדפסה או שמירה.' });
+        if (iframe.contentWindow) {
+          iframe.contentWindow.focus(); // Focus the iframe's content window
+          iframe.contentWindow.print(); // Trigger print dialog
+          toast({ title: 'ייצוא PDF מוכן', description: 'מסמך ה-PDF מוכן להדפסה או שמירה.' });
+        } else {
+          throw new Error("Cannot access iframe content window.");
+        }
       } catch (error) {
         console.error("Error during print:", error);
         toast({ title: 'שגיאה בייצוא PDF', description: 'אירעה שגיאה. נסה שוב.', variant: 'destructive' });
       } finally {
+        // Delay removal slightly to allow print dialog to fully process
         setTimeout(() => {
           if (iframe.parentElement) {
             document.body.removeChild(iframe);
           }
-        }, 500);
+        }, 1000); // Increased delay
       }
     };
   };
