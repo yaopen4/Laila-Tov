@@ -1,3 +1,4 @@
+
 // src/components/auth/login-form.tsx
 "use client";
 
@@ -56,7 +57,7 @@ const LoginForm: FC = () => {
               <Input
                 id="username"
                 type="text"
-                placeholder="לדוגמה: משפחת כהן או coach"
+                placeholder="לדוגמה: משפחת כהן"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
