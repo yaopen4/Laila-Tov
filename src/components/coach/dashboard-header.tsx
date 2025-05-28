@@ -1,16 +1,29 @@
 
+/**
+ * @fileoverview Header component for the coach's dashboard.
+ * Includes a title, search input, and buttons for data export actions.
+ */
 "use client";
 
 import type { FC } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, UploadCloud } from 'lucide-react'; // Changed FileSpreadsheet, FileText to UploadCloud
+import { Search, UploadCloud } from 'lucide-react';
 
+/**
+ * Props for the DashboardHeader component.
+ */
 interface DashboardHeaderProps {
+  /** Callback function triggered when the search term changes. */
   onSearch: (term: string) => void;
-  onOpenExportDialog: () => void; // Changed from onExportCSV, onExportPDF
+  /** Callback function to open the export dialog. */
+  onOpenExportDialog: () => void;
 }
 
+/**
+ * Renders the header for the coach's dashboard.
+ * @param {DashboardHeaderProps} props - The component's props.
+ */
 const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onOpenExportDialog }) => {
   return (
     <div className="mb-6">
@@ -20,9 +33,10 @@ const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onOpenExportDialo
           <Input
             type="search"
             placeholder="חיפוש תינוקות..."
-            className="pe-10"
+            className="pe-10" // Padding-end for icon space (ps-10 in LTR, pe-10 in RTL)
             onChange={(e) => onSearch(e.target.value)}
           />
+          {/* Icon positioned at the end (left in RTL) of the input field */}
           <Search className="absolute end-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         </div>
         <div className="flex gap-2">

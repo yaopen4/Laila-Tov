@@ -2,6 +2,7 @@
 /**
  * @fileoverview Reusable form component for adding or editing baby profiles.
  * Uses react-hook-form and Zod for validation.
+ * Handles both creating new babies and updating existing ones.
  */
 "use client";
 
@@ -20,13 +21,12 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-// Toast import removed as it's handled by parent page
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, Edit3, MessageSquareText } from "lucide-react";
-import type { Baby } from "@/lib/mock-data";
+import type { Baby } from "@/lib/mock-data"; // Using Baby type for initialData
 import { useEffect } from "react";
 
-// Zod schema for form validation
+// Zod schema for form validation. Defines the structure and validation rules for baby data.
 const formSchema = z.object({
   name: z.string().min(2, { message: "שם פרטי חייב להכיל לפחות 2 תווים." }),
   familyName: z.string().min(2, { message: "שם משפחה חייב להכיל לפחות 2 תווים." }),
@@ -37,7 +37,7 @@ const formSchema = z.object({
   siblingsNames: z.string().optional(),
   description: z.string().optional(),
   parentUsername: z.string().min(3, { message: "שם משתמש להורים חייב להכיל לפחות 3 תווים." }),
-  coachNotes: z.string().optional(), // CoachNotes field
+  coachNotes: z.string().optional(), // Notes added by the coach, visible to parents.
 });
 
 /**
@@ -49,36 +49,41 @@ export type BabyFormData = z.infer<typeof formSchema>;
  * Props for the AddBabyForm component.
  */
 interface AddBabyFormProps {
-  /** Initial data to pre-fill the form, used in edit mode. */
-  initialData?: Partial<Baby> | null; // Allow null for initial loading state
-  /** Flag to indicate if the form is in edit mode. Defaults to false. */
+  /** Initial data to pre-fill the form, used in edit mode. Can be null if data is still loading. */
+  initialData?: Partial<Baby> | null;
+  /** Flag to indicate if the form is in edit mode (true) or add mode (false). Defaults to false. */
   isEditMode?: boolean;
   /** Callback function to handle form submission. Passes form values and an optional ID (for updates). */
   onSubmitProp: (values: BabyFormData, id?: string) => void;
 }
 
+/**
+ * A form for adding a new baby or editing an existing baby's details.
+ * @param {AddBabyFormProps} props - The component's props.
+ */
 export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: AddBabyFormProps) {
   const form = useForm<BabyFormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: initialData?.name || "",
-      familyName: initialData?.familyName || "",
-      age: initialData?.age || 0,
-      motherName: initialData?.motherName || "",
-      fatherName: initialData?.fatherName || "",
-      siblingsCount: initialData?.siblingsCount || 0,
-      siblingsNames: initialData?.siblingsNames || "",
-      description: initialData?.description || "",
-      parentUsername: initialData?.parentUsername || "",
-      coachNotes: initialData?.coachNotes || "", // Initialize coachNotes
+    defaultValues: { // Set default values for the form fields
+      name: "",
+      familyName: "",
+      age: 0,
+      motherName: "",
+      fatherName: "",
+      siblingsCount: 0,
+      siblingsNames: "",
+      description: "",
+      parentUsername: "",
+      coachNotes: "",
     },
   });
 
   /**
-   * Effect to reset form fields when initialData changes.
+   * Effect to reset form fields when initialData changes (e.g., when editing a different baby or when data loads).
+   * This ensures the form is correctly pre-filled or cleared.
    */
   useEffect(() => {
-    if (initialData) {
+    if (initialData) { // If initialData is provided (edit mode)
       form.reset({
         name: initialData.name || "",
         familyName: initialData.familyName || "",
@@ -89,29 +94,30 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp }: A
         siblingsNames: initialData.siblingsNames || "",
         description: initialData.description || "",
         parentUsername: initialData.parentUsername || "",
-        coachNotes: initialData.coachNotes || "", // Reset coachNotes
+        coachNotes: initialData.coachNotes || "",
       });
-    } else if (!isEditMode) { // If not in edit mode and no initial data, reset to blank for new entry
+    } else if (!isEditMode) { // If not in edit mode and no initial data (add mode), reset to blank
         form.reset({
             name: "", familyName: "", age: 0, motherName: "", fatherName: "",
             siblingsCount: 0, siblingsNames: "", description: "", parentUsername: "",
             coachNotes: ""
         });
     }
-  }, [initialData, form, isEditMode]); // form.reset is stable but common to include
+  }, [initialData, form, isEditMode]);
 
   /**
-   * Handles the actual form submission.
-   * Calls the onSubmitProp with form values.
+   * Handles the actual form submission after validation.
+   * Calls the `onSubmitProp` callback with the form values and the baby's ID (if editing).
+   * Resets the form if it's in add mode.
    * @param {BabyFormData} values - The validated form data.
    */
   function onSubmit(values: BabyFormData) {
-    onSubmitProp(values, initialData?.id);
-    if (!isEditMode) {
+    onSubmitProp(values, initialData?.id); // Pass ID for updates if initialData exists
+    if (!isEditMode) { // Reset form only if in "add" mode
       form.reset({
         name: "", familyName: "", age: 0, motherName: "", fatherName: "",
         siblingsCount: 0, siblingsNames: "", description: "", parentUsername: "",
-        coachNotes: "" // Reset coachNotes for new entry
+        coachNotes: ""
       });
     }
   }

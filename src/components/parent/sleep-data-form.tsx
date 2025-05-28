@@ -3,6 +3,7 @@
  * @fileoverview Form for parents to log sleep data for their baby.
  * Includes fields for date, and multiple sleep cycles.
  * Uses react-hook-form and Zod for validation.
+ * Can be used for adding new records or editing existing ones.
  */
 "use client";
 
@@ -38,10 +39,10 @@ const sleepCycleSchema = z.object({
   timeToSleep: z.string().min(1, { message: "שדה חובה." }),
   whoPutToSleep: z.string().min(1, { message: "שדה חובה." }),
   howFellAsleep: z.string().min(1, { message: "שדה חובה." }),
-  wakeTime: z.string()
+  wakeTime: z.string() // Optional field
     .optional()
     .refine(val => val === undefined || val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val || ''), {
-      message: "פורמט שעה לא תקין (HH:MM), או השאר ריק."
+      message: "פורמט שעה לא תקין (HH:MM), או השאר ריק." // Validation if value is provided
     }),
 });
 
@@ -68,12 +69,16 @@ interface SleepDataFormProps {
   initialData?: SleepRecord | null;
   /** Callback function for cancelling the form, typically used in dialogs. */
   onCancel?: () => void;
-  /** Custom text for the submit button (e.g., "Update Record"). */
+  /** Custom text for the submit button (e.g., "עדכן רשומה"). Defaults to "שמור נתוני שינה". */
   submitButtonText?: string;
   /** Flag to adjust layout if the form is rendered inside a dialog. Defaults to false. */
   isDialog?: boolean;
 }
 
+/**
+ * A form for parents to log or edit sleep data for their baby.
+ * @param {SleepDataFormProps} props - The component's props.
+ */
 export function SleepDataForm({
   babyName,
   onSubmitSuccess,
@@ -93,7 +98,7 @@ export function SleepDataForm({
             timeToSleep: sc.timeToSleep,
             whoPutToSleep: sc.whoPutToSleep,
             howFellAsleep: sc.howFellAsleep,
-            wakeTime: sc.wakeTime || "", // Ensure wakeTime is string or empty string
+            wakeTime: sc.wakeTime || "", // Ensure wakeTime is string or empty string for optional field
           })),
         }
       : { // Default values for a new record
@@ -102,9 +107,12 @@ export function SleepDataForm({
         },
   });
 
-  // Effect to reset form fields if initialData changes or when component mounts/dialog opens.
+  /**
+   * Effect to reset form fields if initialData changes (e.g. editing a different record)
+   * or when component mounts/dialog opens for a new record (unless it's a dialog for editing).
+   */
   useEffect(() => {
-    if (initialData) {
+    if (initialData) { // If editing an existing record
       form.reset({
         date: new Date(initialData.date),
         sleepCycles: initialData.sleepCycles.map(sc => ({
@@ -115,13 +123,14 @@ export function SleepDataForm({
           wakeTime: sc.wakeTime || "",
         })),
       });
-    } else if (!isDialog) {
+    } else if (!isDialog) { // If adding a new record (not in a dialog context, e.g. main page form)
       form.reset({
         date: new Date(),
         sleepCycles: [{ bedtime: "", timeToSleep: "", whoPutToSleep: "", howFellAsleep: "", wakeTime: "" }],
       });
     }
-  }, [initialData, form.reset, isDialog]);
+    // If it's a dialog for a new record, defaultValues from useForm handle the initial state.
+  }, [initialData, form.reset, isDialog]); // form.reset is stable but included for completeness
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -129,8 +138,9 @@ export function SleepDataForm({
   });
 
   /**
-   * Handles form submission.
-   * Shows a toast notification and calls onSubmitSuccess callback.
+   * Handles form submission after successful validation.
+   * Shows a toast notification and calls the `onSubmitSuccess` callback.
+   * Resets the form if it's for a new record and not in a dialog.
    * @param {SleepRecordFormData} values - The validated form data.
    */
   function onSubmit(values: SleepRecordFormData) {
@@ -139,6 +149,8 @@ export function SleepDataForm({
       description: `הנתונים עבור ${babyName} ${initialData ? 'עודכנו' : 'נשלחו'} בהצלחה.`,
     });
     if (onSubmitSuccess) onSubmitSuccess(values);
+
+    // Reset form only if it's for a new record and not part of a dialog (which handles its own lifecycle)
     if (!initialData && !isDialog) {
       form.reset({
         date: new Date(),
@@ -147,12 +159,13 @@ export function SleepDataForm({
     }
   }
 
+  // Dynamically choose between Card or div wrapper based on whether form is in a dialog
   const CardComponent = isDialog ? 'div' : Card;
   const cardComponentProps = isDialog ? {} : { className: "w-full max-w-2xl mx-auto shadow-xl" };
 
   return (
     <CardComponent {...cardComponentProps}>
-      {!isDialog && (
+      {!isDialog && ( // Display header only if not in a dialog
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-2">
             <BedDouble className="h-6 w-6 text-primary" />
@@ -161,7 +174,7 @@ export function SleepDataForm({
           <CardDescription>נא למלא את כל הפרטים הרלוונטיים.</CardDescription>
         </CardHeader>
       )}
-      <CardContent className={isDialog ? "pt-0" : ""}>
+      <CardContent className={isDialog ? "pt-0" : ""}> {/* Adjust padding if in dialog */}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             {/* Date field */}
@@ -178,11 +191,11 @@ export function SleepDataForm({
                           <Button
                             variant={"outline"}
                             className={cn(
-                              "w-full justify-start text-right font-normal",
+                              "w-full justify-start text-right font-normal", // RTL: text-right for placeholder
                               !field.value && "text-muted-foreground"
                             )}
                           >
-                            <CalendarIcon className="ms-2 me-auto h-4 w-4 opacity-50" />
+                            <CalendarIcon className="ms-2 me-auto h-4 w-4 opacity-50" /> {/* RTL: icon on left */}
                             {field.value ? format(field.value, "PPP", { locale: he }) : <span>בחירת תאריך</span>}
                           </Button>
                         </FormControl>
@@ -196,7 +209,7 @@ export function SleepDataForm({
                             date > new Date() || date < new Date("1900-01-01")
                           }
                           initialFocus
-                          dir="rtl"
+                          dir="rtl" // Ensure calendar itself is RTL
                           locale={he}
                         />
                       </PopoverContent>
@@ -212,9 +225,10 @@ export function SleepDataForm({
               <h3 className="text-lg font-medium border-b pb-2">מחזורי שינה</h3>
               {fields.map((item, index) => (
                 <Card key={item.id} className="bg-background shadow-md">
+                  {/* Header for each sleep cycle card, uses flexbox for RTL layout */}
                   <div className="flex items-center justify-between p-4 border-b">
                      <h4 className="text-md font-semibold">מחזור שינה {index + 1}</h4>
-                     {fields.length > 1 && (
+                     {fields.length > 1 && ( // Show delete button only if there's more than one cycle
                         <Button
                           type="button"
                           variant="ghost"
@@ -284,7 +298,7 @@ export function SleepDataForm({
                       control={form.control}
                       name={`sleepCycles.${index}.howFellAsleep`}
                       render={({ field }) => (
-                        <FormItem className="md:col-span-2">
+                        <FormItem className="md:col-span-2"> {/* Spans two columns on medium screens and up */}
                           <FormLabel>איך נרדמ/ה</FormLabel>
                           <FormControl>
                             <Textarea placeholder="תיאור מפורט של תהליך ההרדמות..." {...field} />
@@ -309,7 +323,7 @@ export function SleepDataForm({
 
             {/* Form actions: Cancel (if applicable) and Submit */}
             <div className={cn("flex gap-2", isDialog ? "justify-end" : "")}>
-              {onCancel && (
+              {onCancel && ( // Display Cancel button only if onCancel prop is provided (typically in dialogs)
                  <Button type="button" variant="outline" onClick={onCancel} className="w-full md:w-auto">
                     ביטול
                  </Button>

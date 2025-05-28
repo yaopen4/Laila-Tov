@@ -1,11 +1,25 @@
+
+/**
+ * @fileoverview Component to display coach's recommendations/notes to parents.
+ * This is a read-only display.
+ */
 import type { FC } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquareText } from 'lucide-react';
 
+/**
+ * Props for the CoachRecommendationsDisplay component.
+ */
 interface CoachRecommendationsDisplayProps {
+  /** The notes or recommendations provided by the coach. Optional. */
   notes?: string;
 }
 
+/**
+ * Renders a card displaying the sleep coach's notes or recommendations.
+ * If no notes are provided, a default message is shown.
+ * @param {CoachRecommendationsDisplayProps} props - The component's props.
+ */
 const CoachRecommendationsDisplay: FC<CoachRecommendationsDisplayProps> = ({ notes }) => {
   return (
     <Card className="mt-8 shadow-lg bg-accent/10 border-accent">
@@ -17,6 +31,7 @@ const CoachRecommendationsDisplay: FC<CoachRecommendationsDisplayProps> = ({ not
       </CardHeader>
       <CardContent>
         {notes ? (
+          // whitespace-pre-line preserves newlines from the coach's input.
           <p className="text-muted-foreground whitespace-pre-line">{notes}</p>
         ) : (
           <p className="text-muted-foreground">אין כרגע המלצות מהמאמן/ת.</p>

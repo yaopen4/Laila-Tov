@@ -1,27 +1,36 @@
 
+/**
+ * @fileoverview Component to display a summary card for a baby on the coach's dashboard.
+ * Provides links to view baby's data (parent view) and edit baby's profile.
+ */
 import type { FC } from 'react';
 import Link from 'next/link';
 import type { Baby } from '@/lib/mock-data';
-// Removed archiveBaby import as it's no longer used here
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, Edit3, Eye } from 'lucide-react'; // Removed ArchiveIcon
+import { User, Edit3, Eye } from 'lucide-react';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
-// Removed useToast as it's no longer used for archiving from card
 
+/**
+ * Props for the BabyCard component.
+ */
 interface BabyCardProps {
+  /** The baby object containing details to display. */
   baby: Baby;
-  // Removed onArchived prop
 }
 
+/**
+ * Renders a card displaying a baby's summary information.
+ * Includes actions to view the baby's detailed data or edit their profile.
+ * @param {BabyCardProps} props - The component's props.
+ */
 const BabyCard: FC<BabyCardProps> = ({ baby }) => {
+  // Determine the date of the latest sleep record, or indicate if none exist.
   const latestSleepDate = baby.sleepRecords && baby.sleepRecords.length > 0 && baby.sleepRecords[0].date
     ? format(new Date(baby.sleepRecords[0].date), "PPP", { locale: he })
     : "אין נתונים";
 
-  // Removed handleArchive function as the button is removed
-  
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
       <CardHeader>
@@ -43,13 +52,14 @@ const BabyCard: FC<BabyCardProps> = ({ baby }) => {
         {baby.description && <p className="text-sm text-muted-foreground pt-2 italic">"{baby.description}"</p>}
       </CardContent>
       <CardFooter className="flex flex-wrap justify-end gap-2 pt-4">
-        {/* Removed Archive Button */}
+        {/* Link to view the baby's data from the parent's perspective */}
         <Link href={`/parent/${baby.parentUsername}`} passHref legacyBehavior>
           <Button variant="outline" size="sm">
             <Eye className="me-2 h-4 w-4" />
             צפה בנתונים
           </Button>
         </Link>
+        {/* Link to edit the baby's profile */}
         <Link href={`/coach/edit-baby/${baby.id}`} passHref legacyBehavior>
           <Button variant="default" size="sm">
             <Edit3 className="me-2 h-4 w-4" />
