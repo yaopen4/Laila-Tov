@@ -24,7 +24,9 @@
     *   Parents can log detailed sleep cycles including bedtime, time to fall asleep, who put the baby to sleep, how they fell asleep, and wake time.
     *   Edit and delete existing sleep records.
 *   **Consultant Notes**: Consultants can add recommendations and notes for parents, which are displayed in the parent view.
-*   **User Authentication (Firebase)**: Uses Firebase Authentication. Parents are identified by an email derived from their username (e.g., `parentUsername@lailatov.app`). The consultant uses a predefined email (e.g., `coach@lailatov.app`).
+*   **User Authentication (Firebase)**: Uses Firebase Authentication. 
+    *   Parents are identified by an email derived from their username (e.g., `parentUsername@lailatov.app`).
+    *   The consultant uses a predefined email (e.g., `coach@lailatov.app`).
 *   **Data Storage (Firestore)**: All data (babies, sleep records) is stored in Firestore, enabling persistence and real-time updates.
 *   **Real-time Updates**: Changes made by parents or consultants are reflected in real-time across devices.
 *   **Responsive Design**: UI adapts for different screen sizes, including a mobile-friendly sidebar.
@@ -81,21 +83,29 @@
 
 ## Login Credentials & User Creation
 
-*   **Consultant**: Sign up using the email `coach@lailatov.app` (or any other email you designate for the coach) and a password of your choice. The application identifies the coach by this email.
+*   **Consultant**:
+    *   The primary consultant account should be created directly in the Firebase Authentication console. The email **must be** `coach@lailatov.app` (or the email defined as `COACH_EMAIL_IDENTIFIER` in `src/services/authService.ts` if changed).
+    *   Set a secure password for this account in the Firebase console.
+    *   The consultant logs in using this email and password.
 *   **Parent**:
-    *   When a consultant adds a new baby, they specify a "Parent Username".
-    *   Parents will sign up using an email formatted as `[Parent Username]@lailatov.app` (e.g., if username is `cohen-family`, signup email is `cohen-family@lailatov.app`) and a password of their choice.
-    *   After signing up, they can log in with these credentials. The application will then associate them with the baby profile matching their `parentUsername`.
+    *   **Parent accounts are created manually by the consultant in the Firebase Authentication console.** Parents cannot sign themselves up through the app.
+    *   When a consultant adds a new baby via the app and assigns a "Parent Username" (e.g., `cohen-family`):
+        1.  The consultant must then go to the Firebase Console -> Authentication -> Users -> "Add user".
+        2.  The consultant creates a user with an email formatted as `[Parent Username]@lailatov.app` (e.g., `cohen-family@lailatov.app`).
+        3.  The consultant sets a temporary password for this parent account.
+        4.  The consultant securely communicates the assigned "Parent Username" and the temporary password to the parent.
+    *   The parent then logs into the app using their assigned "Parent Username" in the "שם משתמש / אימייל" field and the temporary password.
+    *   *Note: For a production system, a "force password change on first login" mechanism is recommended but not implemented in this version.*
 
 ## Security Considerations
 
 *   **Firebase Security Rules**: **CRITICAL!** The default Firestore setup in test mode allows open access. **You MUST write and deploy appropriate Firestore Security Rules** to protect your data before deploying to production. Rules should ensure:
-    *   Users can only read/write data they are authorized for (e.g., a parent can only access their own baby's data).
-    *   Coaches have appropriate access to manage babies.
+    *   Users can only read/write data they are authorized for (e.g., a parent can only access their own baby's data, the consultant can only access their assigned babies).
+    *   Consultants have appropriate access to manage babies.
     *   Proper input validation and data sanitization at the database level.
-*   **Authentication & Authorization**: Firebase Authentication handles user identity. Authorization logic (who can access what) is enforced through Firestore Security Rules and potentially within Next.js API routes if you build them.
-*   **Input Validation**: Zod is used for client-side form validation. Server-side validation (e.g., in Firebase Cloud Functions or your backend API if you build one) is crucial for production.
-*   **Sensitive Data**: Review how and where sensitive data is stored and ensure it complies with privacy regulations.
+*   **Authentication & Authorization**: Firebase Authentication handles user identity. Authorization logic (who can access what) is enforced through Firestore Security Rules and client-side checks in the Next.js application. The client-side checks are primarily for UI/UX and should not be the sole line of defense; robust Firestore rules are essential.
+*   **Input Validation**: Zod is used for client-side form validation. Server-side validation (e.g., in Firestore Security Rules or Firebase Cloud Functions if you extend the backend) is crucial for production.
+*   **Sensitive Data**: Review how and where sensitive data is stored and ensure it complies with privacy regulations. The current setup stores data in Firestore as configured by you.
 
 ## Mobile Compatibility
 
@@ -108,11 +118,11 @@ However, for a production-ready mobile experience, **comprehensive testing on a 
 
 ## Future Enhancements & Considerations
 
-*   **Advanced Firestore Security Rules**: Implement comprehensive and granular security rules.
-*   **Server-Side Logic (Cloud Functions)**: For more complex operations, data validation, or tasks that shouldn't be client-driven (e.g., creating a parent user in Auth when a coach adds a baby, if desired).
+*   **Advanced Firestore Security Rules**: Implement comprehensive and granular security rules for production.
+*   **Server-Side Logic (Cloud Functions)**: For more complex operations, data validation, or tasks that shouldn't be client-driven (e.g., sending welcome emails, automated password reset flows, or programmatically creating parent users if desired in the future).
 *   **Comprehensive Automated Testing**: Implementing unit, integration, and end-to-end tests.
 *   **Advanced Performance Optimization**: Deeper analysis and optimization as the application scales.
-*   **Centralized Logging**: Implementing a more formal logging solution for production environments (e.g., Firebase Functions logs, or a third-party service).
+*   **Centralized Logging**: Implementing a more formal logging solution for production environments.
 *   **Accessibility (A11y) Audit**: Ensuring all components and interactions are fully accessible.
 
 This project was bootstrapped for Firebase Studio.
