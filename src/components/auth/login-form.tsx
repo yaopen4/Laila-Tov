@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
@@ -41,7 +41,6 @@ const LoginForm: FC = () => {
     }
 
     try {
-      // Only login functionality is present now
       const userCredential = await login(authEmail, password);
       const user = userCredential.user;
       
@@ -60,7 +59,7 @@ const LoginForm: FC = () => {
       console.error("Authentication error:", error);
       let message = "אירעה שגיאה. נא לנסות שוב.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        message = "שם משתמש/אימייל או סיסמה שגויים.";
+        message = "שם משתמש או סיסמה שגויים.";
       } else if (error.code === 'auth/invalid-email') {
         message = "שם המשתמש או האימייל אינם תקינים.";
       }
@@ -81,13 +80,12 @@ const LoginForm: FC = () => {
         <CardContent>
           <form onSubmit={handleAuth} className="space-y-6 pt-4">
             <CardTitle className="text-center text-2xl">כניסה למערכת</CardTitle>
-            {/* CardDescription removed */}
             <div className="space-y-2">
-              <Label htmlFor="email-login">שם משתמש / אימייל</Label>
+              <Label htmlFor="email-login">שם משתמש</Label>
               <Input
                 id="email-login"
                 type="text"
-                placeholder="לדוגמה: משפחת כהן או coach@lailatov.app"
+                placeholder="לדוגמה: משפחת כהן"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
                 required
@@ -112,11 +110,9 @@ const LoginForm: FC = () => {
             </Button>
           </form>
         </CardContent>
-         {/* CardFooter removed */}
       </Card>
     </div>
   );
 };
 
 export default LoginForm;
-
