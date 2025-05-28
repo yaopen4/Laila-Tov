@@ -118,8 +118,6 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
     // Parent username is converted to lowercase before sending to onSubmitProp
     // The actual saving to Firestore should handle this if needed, but good to be consistent.
     await onSubmitProp({ ...values, parentUsername: values.parentUsername.toLowerCase() }, initialData?.id);
-    // Form reset logic removed from here, as the parent page (add-baby/edit-baby) handles navigation
-    // which inherently causes a re-render or unmount.
   }
 
   return (
@@ -180,11 +178,8 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                   <FormItem>
                     <FormLabel>שם משתמש להורים</FormLabel>
                     <FormControl>
-                      <Input placeholder="שם משתמש ייחודי (אותיות באנגלית, מספרים, -, _)" {...field} disabled={isEditMode || isSubmitting} />
+                      <Input placeholder="baby-family" {...field} disabled={isEditMode || isSubmitting} />
                     </FormControl>
-                    <FormDescription>
-                      {isEditMode ? "שם משתמש אינו ניתן לעריכה." : "הורים ישתמשו בזה ליצירת אימייל להתחברות (לדוגמה: username@lailatov.app)."}
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
