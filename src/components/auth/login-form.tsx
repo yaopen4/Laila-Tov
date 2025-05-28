@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
-import { login, isCoachUser } from '@/services/authService'; // Removed signUp as parents can't self-signup
+import { login, isCoachUser } from '@/services/authService';
 
 
 const LoginForm: FC = () => {
@@ -79,14 +79,9 @@ const LoginForm: FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Tabs removed, direct login form */}
           <form onSubmit={handleAuth} className="space-y-6 pt-4">
             <CardTitle className="text-center text-2xl">כניסה למערכת</CardTitle>
-            <CardDescription className="text-center pb-2">
-              יועצת: יש להתחבר עם האימייל `coach@lailatov.app`.
-              <br />
-              הורים: יש להזין את שם המשתמש שקיבלתם מהיועצת.
-            </CardDescription>
+            {/* CardDescription removed */}
             <div className="space-y-2">
               <Label htmlFor="email-login">שם משתמש / אימייל</Label>
               <Input
@@ -117,13 +112,11 @@ const LoginForm: FC = () => {
             </Button>
           </form>
         </CardContent>
-         <CardFooter className="text-xs text-muted-foreground text-center block pt-4">
-            <p>הורים: שם המשתמש לכניסה הוא זה שהוגדר על ידי היועצת.</p>
-            <p>חשבונות הורים נוצרים על ידי היועצת ישירות במערכת Firebase.</p>
-        </CardFooter>
+         {/* CardFooter removed */}
       </Card>
     </div>
   );
 };
 
 export default LoginForm;
+
