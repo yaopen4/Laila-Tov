@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 
 const LoginForm: FC = () => {
-  const [email, setEmail] = useState('');
+  const [emailInput, setEmailInput] = useState(''); // Renamed to avoid confusion with processed email
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false); // To toggle between login and sign up
@@ -28,12 +28,15 @@ const LoginForm: FC = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Basic email validation
-    if (!email.includes('@')) {
-        toast({ title: "שגיאה", description: "נא להזין כתובת אימייל תקינה.", variant: "destructive" });
-        setIsLoading(false);
-        return;
+    let authEmail = emailInput;
+    // If the input doesn't contain "@", assume it's a parent's username and append domain
+    if (!emailInput.includes('@')) {
+      authEmail = `${emailInput.toLowerCase()}@lailatov.app`;
+    } else {
+      // If it includes "@", treat it as a full email (likely for the coach)
+      authEmail = emailInput.toLowerCase();
     }
+    
      if (password.length < 6) {
         toast({ title: "שגיאה", description: "סיסמה חייבת להכיל לפחות 6 תווים.", variant: "destructive" });
         setIsLoading(false);
@@ -44,22 +47,24 @@ const LoginForm: FC = () => {
     try {
       let userCredential;
       if (isSignUp) {
-        userCredential = await signUp(email, password);
+        // For signup, parentUsername from the form becomes the email prefix
+        // Coaches still use their full email to sign up
+        userCredential = await signUp(authEmail, password);
         toast({ title: "הרשמה הצליחה", description: "כעת ניתן להתחבר." });
         setIsSignUp(false); // Switch to login tab after successful sign up
       } else {
-        userCredential = await login(email, password);
+        userCredential = await login(authEmail, password);
         const user = userCredential.user;
         
         if (isCoachUser(user)) {
           toast({ title: "התחברות הצליחה", description: "ברוכה הבאה, יועצת!" });
           router.push('/coach/dashboard');
         } else if (user.email?.endsWith('@lailatov.app')) {
+          // Extract username part for parent redirection
           const parentUsername = user.email.split('@')[0];
           toast({ title: "התחברות הצליחה", description: `ברוך הבא, ${parentUsername}!` });
           router.push(`/parent/${parentUsername}`);
         } else {
-           // This case should ideally not be reached if emails are structured correctly
           toast({ title: "שגיאה", description: "משתמש לא מזוהה.", variant: "destructive" });
         }
       }
@@ -67,11 +72,11 @@ const LoginForm: FC = () => {
       console.error("Authentication error:", error);
       let message = "אירעה שגיאה. נא לנסות שוב.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        message = "אימייל או סיסמה שגויים.";
+        message = "שם משתמש/אימייל או סיסמה שגויים.";
       } else if (error.code === 'auth/email-already-in-use') {
-        message = "כתובת אימייל זו כבר רשומה.";
+        message = "כתובת אימייל זו (או שם המשתמש) כבר רשומה.";
       } else if (error.code === 'auth/invalid-email') {
-        message = "כתובת אימייל אינה תקינה.";
+        message = "שם המשתמש או האימייל אינם תקינים.";
       }
       toast({ title: "שגיאה באימות", description: message, variant: "destructive" });
     } finally {
@@ -97,13 +102,13 @@ const LoginForm: FC = () => {
               <form onSubmit={handleAuth} className="space-y-6 pt-4">
                 <CardDescription className="text-center pb-2">התחברות למערכת</CardDescription>
                 <div className="space-y-2">
-                  <Label htmlFor="email-login">אימייל</Label>
+                  <Label htmlFor="email-login">שם משתמש / אימייל</Label>
                   <Input
                     id="email-login"
-                    type="email"
-                    placeholder="your-username@lailatov.app"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="text" // Changed from email to text to allow plain username
+                    placeholder="שם משתמש הורים / coach@lailatov.app"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
                     required
                     className="text-right"
                   />
@@ -131,16 +136,16 @@ const LoginForm: FC = () => {
                 <CardDescription className="text-center pb-2">
                   יועצת: יש להירשם עם האימייל `coach@lailatov.app`.
                   <br />
-                  הורים: יש להירשם עם אימייל במבנה `[שםמשתמשהורים]@lailatov.app`.
+                  הורים: יש להזין את שם המשתמש שקיבלתם מהיועצת.
                 </CardDescription>
                 <div className="space-y-2">
-                  <Label htmlFor="email-signup">אימייל</Label>
+                  <Label htmlFor="email-signup">שם משתמש / אימייל</Label>
                   <Input
                     id="email-signup"
-                    type="email"
-                    placeholder="your-username@lailatov.app"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="text" // Changed from email to text
+                    placeholder="שם משתמש הורים / coach@lailatov.app"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
                     required
                     className="text-right"
                   />
@@ -166,8 +171,8 @@ const LoginForm: FC = () => {
           </Tabs>
         </CardContent>
          <CardFooter className="text-xs text-muted-foreground text-center block pt-4">
-            <p>הורים: שם המשתמש לאימייל (`[שםמשתמשהורים]`) הוא זה שהוגדר על ידי היועצת בעת יצירת פרופיל התינוק.</p>
-            <p>לדוגמה: אם שם המשתמש שלכם הוא `cohen-family`, הירשמו עם האימייל `cohen-family@lailatov.app`.</p>
+            <p>הורים: שם המשתמש לכניסה הוא זה שהוגדר על ידי היועצת בעת יצירת פרופיל התינוק.</p>
+            <p>לדוגמה: אם שם המשתמש שלכם הוא `cohen-family`, הזינו `cohen-family` בשדה 'שם משתמש / אימייל'.</p>
         </CardFooter>
       </Card>
     </div>
@@ -175,3 +180,4 @@ const LoginForm: FC = () => {
 };
 
 export default LoginForm;
+

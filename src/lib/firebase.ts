@@ -4,13 +4,14 @@ import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
 // Your web app's Firebase configuration
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyC98M7LohW4ZmBKUOcTPwXZN4C7FTElNVc",
+  authDomain: "laila-tov.firebaseapp.com",
+  projectId: "laila-tov",
+  storageBucket: "laila-tov.firebasestorage.app",
+  messagingSenderId: "948624363951",
+  appId: "1:948624363951:web:192e2b140266f3705b5f5a"
 };
 
 // --- BEGIN Explicit Pre-checks ---
