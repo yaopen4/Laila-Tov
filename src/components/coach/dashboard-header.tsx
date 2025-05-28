@@ -21,10 +21,10 @@ const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onExportCSV, onEx
           <Input
             type="search"
             placeholder="חיפוש תינוקות..."
-            className="pe-10" // Padding end for search icon
+            className="pe-10" // Padding end (left in RTL) for search icon
             onChange={(e) => onSearch(e.target.value)}
           />
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <Search className="absolute end-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" /> {/* Changed start-3 to end-3 */}
         </div>
         <div className="flex gap-2">
             <Button variant="outline" onClick={onExportCSV}>
@@ -42,3 +42,4 @@ const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onExportCSV, onEx
 };
 
 export default DashboardHeader;
+
