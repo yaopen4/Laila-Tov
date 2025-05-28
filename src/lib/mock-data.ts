@@ -2,6 +2,12 @@
 import { format } from 'date-fns';
 
 /**
+ * @fileoverview Mock data and related functions for the Laila Tov application.
+ * NOTE: This is in-memory mock data and is not suitable for production use.
+ * It does not persist data and is reset on each application reload.
+ */
+
+/**
  * Represents a single sleep cycle within a sleep record.
  */
 export interface SleepCycle {
@@ -382,3 +388,4 @@ export type SleepRecordFormData = {
   date: Date; // Date object from calendar input
   sleepCycles: Array<Omit<SleepCycle, 'id'| 'wakeTime'> & { wakeTime?: string }>;
 };
+

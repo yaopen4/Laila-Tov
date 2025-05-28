@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Baby, SleepRecord, SleepCycle } from '@/lib/mock-data';
+import type { Baby, SleepRecord, SleepCycle } from '@/lib/mock-data'; // Ensure all necessary types are imported
 import { getActiveBabies } from '@/lib/mock-data';
 import DashboardHeader from '@/components/coach/dashboard-header';
 import BabyList from '@/components/coach/baby-list';
@@ -28,6 +28,21 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
+
+/**
+ * Escapes HTML special characters in a string.
+ * @param {string | null | undefined} unsafe - The string to escape.
+ * @returns {string} The escaped string.
+ */
+const escapeHtml = (unsafe: string | null | undefined): string => {
+  if (unsafe === null || unsafe === undefined) return '';
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
 
 export default function CoachDashboardPage() {
   const [babies, setBabies] = useState<Baby[]>([]);
@@ -101,7 +116,7 @@ export default function CoachDashboardPage() {
     } else {
       // This part is tricky: if selectAllBabies is unchecked *after* some were manually selected,
       // we don't want to clear them unless the uncheck was meant to clear all.
-      // For simplicity, unchecking "select all" clears all. If more granular control is needed, this logic can be expanded.
+      // For simplicity, unchecking "select all" clears all if all were selected.
       if (selectedBabyIds.length === babies.length && babies.length > 0) {
          // only clear if "select all" was effectively unchecking all
       }
@@ -129,7 +144,8 @@ export default function CoachDashboardPage() {
       return;
     }
 
-    const escapeCSV = (field: any): string => {
+    // Local escapeCSV, as the global one might not be in this direct scope if moved.
+    const localEscapeCSV = (field: any): string => {
       if (field === null || field === undefined) {
         return '';
       }
@@ -144,9 +160,9 @@ export default function CoachDashboardPage() {
       const headerKeys = Object.keys(headers);
       const hebrewHeaderValues = Object.values(headers);
 
-      const headerRow = hebrewHeaderValues.map(escapeCSV).join(',');
+      const headerRow = hebrewHeaderValues.map(localEscapeCSV).join(',');
       const dataRows = data.map(row =>
-        headerKeys.map(key => escapeCSV(row[key])).join(',')
+        headerKeys.map(key => localEscapeCSV(row[key])).join(',')
       );
       return [headerRow, ...dataRows].join('\n');
     };
@@ -287,16 +303,16 @@ export default function CoachDashboardPage() {
     babiesToExport.forEach(baby => {
       htmlContent += `
         <div class="baby-section">
-          <h1>תינוק: ${baby.name} ${baby.familyName}</h1>
-          <h2>גיל: ${baby.age} חודשים</h2>
-          <h3>פרטי הורים: אם - ${baby.motherName}, אב - ${baby.fatherName}</h3>
-          ${baby.description ? `<p><strong>תיאור:</strong> ${baby.description}</p>` : ''}
-          ${baby.coachNotes ? `<p><strong>הערות מאמן/ת:</strong> ${baby.coachNotes}</p>` : ''}
+          <h1>תינוק: ${escapeHtml(baby.name)} ${escapeHtml(baby.familyName)}</h1>
+          <h2>גיל: ${escapeHtml(String(baby.age))} חודשים</h2>
+          <h3>פרטי הורים: אם - ${escapeHtml(baby.motherName)}, אב - ${escapeHtml(baby.fatherName)}</h3>
+          ${baby.description ? `<p><strong>תיאור:</strong> ${escapeHtml(baby.description)}</p>` : ''}
+          ${baby.coachNotes ? `<p><strong>הערות מאמן/ת:</strong> ${escapeHtml(baby.coachNotes)}</p>` : ''}
       `;
 
       if (baby.sleepRecords && baby.sleepRecords.length > 0) {
         baby.sleepRecords.forEach(record => {
-          htmlContent += `<h4>רשומת שינה: ${format(new Date(record.date), "PPP", { locale: he })}</h4>`;
+          htmlContent += `<h4>רשומת שינה: ${escapeHtml(format(new Date(record.date), "PPP", { locale: he }))}</h4>`;
           if (record.sleepCycles && record.sleepCycles.length > 0) {
             htmlContent += `
               <table>
@@ -316,11 +332,11 @@ export default function CoachDashboardPage() {
               htmlContent += `
                 <tr>
                   <td>${index + 1}</td>
-                  <td>${cycle.bedtime}</td>
-                  <td>${cycle.timeToSleep}</td>
-                  <td>${cycle.whoPutToSleep}</td>
-                  <td>${cycle.howFellAsleep}</td>
-                  <td>${cycle.wakeTime || '-'}</td>
+                  <td>${escapeHtml(cycle.bedtime)}</td>
+                  <td>${escapeHtml(cycle.timeToSleep)}</td>
+                  <td>${escapeHtml(cycle.whoPutToSleep)}</td>
+                  <td>${escapeHtml(cycle.howFellAsleep)}</td>
+                  <td>${escapeHtml(cycle.wakeTime) || '-'}</td>
                 </tr>
               `;
             });
@@ -344,11 +360,10 @@ export default function CoachDashboardPage() {
     iframe.style.height = '1px';
     iframe.style.left = '-9999px'; // Position off-screen
     iframe.style.border = 'none'; // No border
-    // iframe.style.visibility = 'hidden'; // Removed this line
 
     document.body.appendChild(iframe);
 
-    iframe.srcdoc = htmlContent;
+    iframe.srcdoc = htmlContent; // Use srcdoc for security and simplicity
     iframe.onload = function() {
       try {
         if (iframe.contentWindow) {
