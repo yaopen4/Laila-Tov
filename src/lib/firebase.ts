@@ -13,19 +13,25 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Check for essential Firebase config keys before attempting to initialize
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  let missingVars = [];
-  if (!firebaseConfig.apiKey) missingVars.push("NEXT_PUBLIC_FIREBASE_API_KEY");
-  if (!firebaseConfig.projectId) missingVars.push("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
-  
+// --- BEGIN Explicit Pre-checks ---
+if (!firebaseConfig.apiKey || typeof firebaseConfig.apiKey !== 'string' || firebaseConfig.apiKey.trim() === '') {
   throw new Error(
-    `Firebase configuration is missing or incomplete. ` +
-    `Please ensure that ${missingVars.join(' and ')} ` +
-    `are set correctly in your .env.local file. ` +
-    `Refer to the README.md for setup instructions. You may need to restart your development server after updating .env.local.`
+    `Firebase Error: NEXT_PUBLIC_FIREBASE_API_KEY is missing, not a string, or empty in your .env.local file. ` +
+    `Current value: '${firebaseConfig.apiKey}'. ` +
+    `Please check your .env.local and ensure it's correctly set and that you've restarted your development server. ` +
+    `Refer to README.md for setup instructions.`
   );
 }
+
+if (!firebaseConfig.projectId || typeof firebaseConfig.projectId !== 'string' || firebaseConfig.projectId.trim() === '') {
+  throw new Error(
+    `Firebase Error: NEXT_PUBLIC_FIREBASE_PROJECT_ID is missing, not a string, or empty in your .env.local file. ` +
+    `Current value: '${firebaseConfig.projectId}'. ` +
+    `Please check your .env.local and ensure it's correctly set and that you've restarted your development server. ` +
+    `Refer to README.md for setup instructions.`
+  );
+}
+// --- END Explicit Pre-checks ---
 
 let app: FirebaseApp;
 let auth: Auth;
@@ -36,10 +42,15 @@ if (getApps().length === 0) {
     app = initializeApp(firebaseConfig);
   } catch (error) {
     console.error("Firebase initialization error:", error);
-    throw new Error(
-      "Failed to initialize Firebase. This could be due to incorrect Firebase config values in .env.local. " +
-      "Please verify your API key and other project settings. Original error: " + (error as Error).message
-    );
+    let errorMessage = "Failed to initialize Firebase. ";
+    // This specific check might be redundant now with the pre-checks, but kept for robustness
+    if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+      errorMessage += "Essential configuration (API Key or Project ID) might be missing or invalid. ";
+    } else {
+      errorMessage += "This could be due to incorrect Firebase config values in .env.local, or a network issue. ";
+    }
+    errorMessage += "Please verify your Firebase project settings and .env.local file. Original error: " + (error as Error).message;
+    throw new Error(errorMessage);
   }
 } else {
   app = getApps()[0];
@@ -50,7 +61,6 @@ try {
   db = getFirestore(app);
 } catch (error) {
   console.error("Error getting Firebase Auth or Firestore instance:", error);
-  // This path is less likely if initializeApp succeeded but good for robustness
   throw new Error(
     "Failed to get Firebase Auth or Firestore instance. Ensure Firebase was initialized correctly. Original error: " + (error as Error).message
   );
