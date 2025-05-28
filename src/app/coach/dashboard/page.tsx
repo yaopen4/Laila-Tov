@@ -11,6 +11,21 @@ import { getActiveBabies } from '@/lib/mock-data';
 import DashboardHeader from '@/components/coach/dashboard-header';
 import BabyList from '@/components/coach/baby-list';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { useToast } from '@/hooks/use-toast';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 
@@ -19,6 +34,14 @@ export default function CoachDashboardPage() {
   const [filteredBabies, setFilteredBabies] = useState<Baby[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  // State for export dialog
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [selectedBabyIds, setSelectedBabyIds] = useState<string[]>([]);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('csv');
+  const [selectAllBabies, setSelectAllBabies] = useState(false);
+
 
   /**
    * Fetches and sets the list of active babies.
@@ -59,14 +82,50 @@ export default function CoachDashboardPage() {
     setSearchTerm(term);
   };
 
+  const openExportDialog = () => {
+    setSelectedBabyIds([]); // Reset selections
+    setSelectAllBabies(false);
+    setExportFormat('csv'); // Reset format
+    setIsExportDialogOpen(true);
+  };
+
+  const handleBabySelectionChange = (babyId: string, checked: boolean) => {
+    setSelectedBabyIds(prevSelected =>
+      checked ? [...prevSelected, babyId] : prevSelected.filter(id => id !== babyId)
+    );
+  };
+
+  useEffect(() => {
+    if (selectAllBabies) {
+      setSelectedBabyIds(babies.map(b => b.id));
+    } else {
+      // This part is tricky: if selectAllBabies is unchecked *after* some were manually selected,
+      // we don't want to clear them unless the uncheck was meant to clear all.
+      // For simplicity, unchecking "select all" clears all. If more granular control is needed, this logic can be expanded.
+      if (selectedBabyIds.length === babies.length && babies.length > 0) {
+         // only clear if "select all" was effectively unchecking all
+      }
+    }
+  }, [selectAllBabies, babies, selectedBabyIds.length]);
+
+  const handleSelectAllChange = (checked: boolean) => {
+    setSelectAllBabies(checked);
+    if (checked) {
+      setSelectedBabyIds(babies.map(b => b.id));
+    } else {
+      setSelectedBabyIds([]);
+    }
+  };
+
+
   /**
    * Handles exporting baby data to CSV files.
-   * Generates one CSV file per active baby.
+   * Generates one CSV file per baby.
+   * @param {Baby[]} babiesToExport - The list of babies to export.
    */
-  const handleExportCSV = () => {
-    const babiesToExport = getActiveBabies(); 
+  const exportBabiesToCSV = (babiesToExport: Baby[]) => {
     if (babiesToExport.length === 0) {
-      alert('אין תינוקות פעילים לייצוא.');
+      toast({ title: 'לא נבחרו תינוקות', description: 'יש לבחור לפחות תינוק אחד לייצוא.', variant: 'destructive' });
       return;
     }
 
@@ -119,7 +178,7 @@ export default function CoachDashboardPage() {
                 wakeTime: cycle.wakeTime || '', 
               });
             });
-          } else { // If a record has no sleep cycles
+          } else {
             babyDataForCSV.push({
               date: record.date,
               cycleNumber: '-', bedtime: '-', timeToSleep: '-',
@@ -127,7 +186,7 @@ export default function CoachDashboardPage() {
             });
           }
         });
-      } else { // If a baby has no sleep records at all
+      } else {
         const emptyRow: any = {};
         Object.keys(csvHeaders).forEach(key => {
             emptyRow[key] = (key === 'date' ? 'אין נתוני שינה' : '');
@@ -154,19 +213,16 @@ export default function CoachDashboardPage() {
       }, 100); 
     });
 
-    if (babiesToExport.length > 0) {
-      alert(`${babiesToExport.length} קבצי CSV נוצרו והורדו (אחד לכל תינוק).`);
-    }
+    toast({ title: 'ייצוא CSV הושלם', description: `${babiesToExport.length} קבצים נוצרו והורדו.`});
   };
 
   /**
    * Handles exporting baby data to a PDF file (via browser print).
-   * Generates an HTML document with all baby data and triggers the print dialog.
+   * @param {Baby[]} babiesToExport - The list of babies to export.
    */
-  const handleExportPDF = () => {
-    const babiesToExport = getActiveBabies();
-    if (babiesToExport.length === 0) {
-      alert('אין תינוקות פעילים לייצוא ל-PDF.');
+  const exportBabiesToPDF = (babiesToExport: Baby[]) => {
+     if (babiesToExport.length === 0) {
+      toast({ title: 'לא נבחרו תינוקות', description: 'יש לבחור לפחות תינוק אחד לייצוא.', variant: 'destructive' });
       return;
     }
 
@@ -287,9 +343,10 @@ export default function CoachDashboardPage() {
       try {
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
+        toast({ title: 'ייצוא PDF מוכן', description: 'מסמך ה-PDF מוכן להדפסה או שמירה.' });
       } catch (error) {
         console.error("Error during print:", error);
-        alert("אירעה שגיאה בעת ניסיון הפקת ה-PDF. נסה שוב או בדוק את הגדרות הדפדפן.");
+        toast({ title: 'שגיאה בייצוא PDF', description: 'אירעה שגיאה. נסה שוב.', variant: 'destructive' });
       } finally {
         setTimeout(() => {
           if (iframe.parentElement) {
@@ -300,27 +357,39 @@ export default function CoachDashboardPage() {
     };
   };
 
+  const handleConfirmExport = () => {
+    if (selectedBabyIds.length === 0) {
+      toast({ title: 'לא נבחרו תינוקות', description: 'אנא בחר לפחות תינוק אחד לייצוא.', variant: 'destructive' });
+      return;
+    }
+    const babiesToActuallyExport = babies.filter(b => selectedBabyIds.includes(b.id));
+
+    if (exportFormat === 'csv') {
+      exportBabiesToCSV(babiesToActuallyExport);
+    } else if (exportFormat === 'pdf') {
+      exportBabiesToPDF(babiesToActuallyExport);
+    }
+    setIsExportDialogOpen(false);
+  };
+
 
   if (isLoading) {
     return (
-      <div>
-        <div className="max-w-7xl mx-auto">
-          <DashboardHeader 
-            onSearch={handleSearch} 
-            onExportCSV={() => {}}
-            onExportPDF={() => {}}
-          />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="p-4 border rounded-lg shadow">
-                <Skeleton className="h-8 w-3/4 mb-2" />
-                <Skeleton className="h-4 w-1/2 mb-4" />
-                <Skeleton className="h-4 w-full mb-1" />
-                <Skeleton className="h-4 w-full mb-1" />
-                <Skeleton className="h-10 w-1/3 mt-4 ms-auto" />
-              </div>
-            ))}
-          </div>
+      <div className="max-w-7xl mx-auto">
+        <DashboardHeader 
+          onSearch={handleSearch} 
+          onOpenExportDialog={() => {}} // Placeholder for loading state
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="p-4 border rounded-lg shadow">
+              <Skeleton className="h-8 w-3/4 mb-2" />
+              <Skeleton className="h-4 w-1/2 mb-4" />
+              <Skeleton className="h-4 w-full mb-1" />
+              <Skeleton className="h-4 w-full mb-1" />
+              <Skeleton className="h-10 w-1/3 mt-4 ms-auto" />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -328,15 +397,82 @@ export default function CoachDashboardPage() {
   
 
   return (
-    <div>
-      <div className="max-w-7xl mx-auto">
-        <DashboardHeader 
-          onSearch={handleSearch} 
-          onExportCSV={handleExportCSV}
-          onExportPDF={handleExportPDF}
-        />
-        <BabyList babies={filteredBabies} />
-      </div>
+    <div className="max-w-7xl mx-auto">
+      <DashboardHeader 
+        onSearch={handleSearch} 
+        onOpenExportDialog={openExportDialog}
+      />
+      <BabyList babies={filteredBabies} />
+
+      <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>ייצוא נתוני תינוקות</DialogTitle>
+            <DialogDescription>
+              בחר את התינוקות והפורמט לייצוא.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="font-semibold">בחר תינוקות:</Label>
+              {babies.length > 0 ? (
+                <>
+                  <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                    <Checkbox
+                      id="select-all-babies"
+                      checked={selectAllBabies || (selectedBabyIds.length === babies.length && babies.length > 0)}
+                      onCheckedChange={(checked) => handleSelectAllChange(Boolean(checked))}
+                    />
+                    <Label htmlFor="select-all-babies" className="cursor-pointer">בחר הכל</Label>
+                  </div>
+                  <ScrollArea className="h-[150px] w-full rounded-md border p-2">
+                    {babies.map(baby => (
+                      <div key={baby.id} className="flex items-center space-x-2 rtl:space-x-reverse py-1">
+                        <Checkbox
+                          id={`baby-export-${baby.id}`}
+                          checked={selectedBabyIds.includes(baby.id)}
+                          onCheckedChange={(checked) => handleBabySelectionChange(baby.id, Boolean(checked))}
+                        />
+                        <Label htmlFor={`baby-export-${baby.id}`} className="cursor-pointer">
+                          {baby.name} {baby.familyName}
+                        </Label>
+                      </div>
+                    ))}
+                  </ScrollArea>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">אין תינוקות פעילים להצגה.</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold">בחר פורמט ייצוא:</Label>
+              <RadioGroup
+                value={exportFormat}
+                onValueChange={(value: 'csv' | 'pdf') => setExportFormat(value)}
+                className="flex space-x-2 rtl:space-x-reverse"
+              >
+                <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                  <RadioGroupItem value="csv" id="format-csv" />
+                  <Label htmlFor="format-csv" className="cursor-pointer">CSV</Label>
+                </div>
+                <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                  <RadioGroupItem value="pdf" id="format-pdf" />
+                  <Label htmlFor="format-pdf" className="cursor-pointer">PDF</Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <DialogClose asChild>
+              <Button type="button" variant="outline">ביטול</Button>
+            </DialogClose>
+            <Button type="button" onClick={handleConfirmExport} disabled={selectedBabyIds.length === 0}>
+              ייצא נתונים
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

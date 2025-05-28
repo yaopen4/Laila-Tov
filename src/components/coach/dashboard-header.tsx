@@ -4,15 +4,14 @@
 import type { FC } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, FileSpreadsheet, FileText } from 'lucide-react'; // Added FileSpreadsheet
+import { Search, UploadCloud } from 'lucide-react'; // Changed FileSpreadsheet, FileText to UploadCloud
 
 interface DashboardHeaderProps {
   onSearch: (term: string) => void;
-  onExportCSV: () => void;
-  onExportPDF: () => void;
+  onOpenExportDialog: () => void; // Changed from onExportCSV, onExportPDF
 }
 
-const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onExportCSV, onExportPDF }) => {
+const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onOpenExportDialog }) => {
   return (
     <div className="mb-6">
       <h1 className="text-3xl font-bold mb-4 text-primary">לוח בקרה למאמן/ת</h1>
@@ -21,19 +20,15 @@ const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onExportCSV, onEx
           <Input
             type="search"
             placeholder="חיפוש תינוקות..."
-            className="pe-10" // Padding end (left in RTL) for search icon
+            className="pe-10"
             onChange={(e) => onSearch(e.target.value)}
           />
-          <Search className="absolute end-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" /> {/* Changed start-3 to end-3 */}
+          <Search className="absolute end-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         </div>
         <div className="flex gap-2">
-            <Button variant="outline" onClick={onExportCSV}>
-                <FileSpreadsheet className="me-2 h-4 w-4" />
-                ייצוא CSV
-            </Button>
-            <Button variant="outline" onClick={onExportPDF}>
-                <FileText className="me-2 h-4 w-4" />
-                ייצוא PDF
+            <Button variant="outline" onClick={onOpenExportDialog}>
+                <UploadCloud className="me-2 h-4 w-4" />
+                ייצוא נתונים
             </Button>
         </div>
       </div>
@@ -42,4 +37,3 @@ const DashboardHeader: FC<DashboardHeaderProps> = ({ onSearch, onExportCSV, onEx
 };
 
 export default DashboardHeader;
-
