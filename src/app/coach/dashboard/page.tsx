@@ -179,7 +179,7 @@ export default function CoachDashboardPage() {
               });
             });
           } else {
-            // If a sleep record has no cycles (should ideally not happen with current form validation)
+            // If a sleep record has no cycles
             babyDataForCSV.push({
               date: record.date,
               cycleNumber: '-', bedtime: '-', timeToSleep: '-',
@@ -344,7 +344,7 @@ export default function CoachDashboardPage() {
     iframe.style.height = '1px';
     iframe.style.left = '-9999px'; // Position off-screen
     iframe.style.border = 'none'; // No border
-    iframe.style.visibility = 'hidden'; // Hide it
+    // iframe.style.visibility = 'hidden'; // Removed this line
 
     document.body.appendChild(iframe);
 
@@ -354,7 +354,6 @@ export default function CoachDashboardPage() {
         if (iframe.contentWindow) {
           iframe.contentWindow.focus(); // Focus the iframe's content window
           iframe.contentWindow.print(); // Trigger print dialog
-          toast({ title: 'ייצוא PDF מוכן', description: 'מסמך ה-PDF מוכן להדפסה או שמירה.' });
         } else {
           throw new Error("Cannot access iframe content window.");
         }
@@ -362,12 +361,17 @@ export default function CoachDashboardPage() {
         console.error("Error during print:", error);
         toast({ title: 'שגיאה בייצוא PDF', description: 'אירעה שגיאה. נסה שוב.', variant: 'destructive' });
       } finally {
+        // Updated toast message to be more explicit about user action
+        toast({ 
+          title: 'חלון הדפסה מוכן', 
+          description: 'בחר "שמור כ-PDF" בחלון ההדפסה של הדפדפן לשמירת הקובץ.' 
+        });
         // Delay removal slightly to allow print dialog to fully process
         setTimeout(() => {
           if (iframe.parentElement) {
             document.body.removeChild(iframe);
           }
-        }, 1000); // Increased delay
+        }, 1000); 
       }
     };
   };
