@@ -1,18 +1,19 @@
+
 /**
  * @fileoverview Form for parents to log sleep data for their baby.
- * Includes fields for date, stage in the process, and multiple sleep cycles.
+ * Includes fields for date, and multiple sleep cycles.
  * Uses react-hook-form and Zod for validation.
  */
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useFieldArray } from "react-hook-form"; // Controller removed as not directly used
+import { useForm, useFieldArray } from "react-hook-form";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  FormDescription, // Not currently used but available
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -27,7 +28,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, PlusCircle, Send, Trash2, BedDouble, Timer, UserCircle2, Moon, Sunrise, Layers } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Send, Trash2, BedDouble, Timer, UserCircle2, Moon, Sunrise } from 'lucide-react';
 import type { SleepRecord } from "@/lib/mock-data";
 import { useEffect } from "react";
 
@@ -47,7 +48,6 @@ const sleepCycleSchema = z.object({
 // Zod schema for a sleep record, including an array of sleep cycles
 const sleepRecordSchema = z.object({
   date: z.date({ required_error: "תאריך הוא שדה חובה." }),
-  stage: z.string().min(1, { message: "שלב הוא שדה חובה." }),
   sleepCycles: z.array(sleepCycleSchema).min(1, { message: "חובה להוסיף לפחות מחזור שינה אחד." }),
 });
 
@@ -88,7 +88,6 @@ export function SleepDataForm({
     defaultValues: initialData
       ? { // Pre-fill form if initialData is provided (edit mode)
           date: new Date(initialData.date), // Ensure date is a Date object
-          stage: initialData.stage,
           sleepCycles: initialData.sleepCycles.map(sc => ({
             bedtime: sc.bedtime,
             timeToSleep: sc.timeToSleep,
@@ -99,18 +98,15 @@ export function SleepDataForm({
         }
       : { // Default values for a new record
           date: new Date(),
-          stage: "",
           sleepCycles: [{ bedtime: "", timeToSleep: "", whoPutToSleep: "", howFellAsleep: "", wakeTime: "" }],
         },
   });
 
   // Effect to reset form fields if initialData changes or when component mounts/dialog opens.
-  // This is useful if the same form instance is used for adding then editing, or editing different records.
   useEffect(() => {
     if (initialData) {
       form.reset({
         date: new Date(initialData.date),
-        stage: initialData.stage,
         sleepCycles: initialData.sleepCycles.map(sc => ({
           bedtime: sc.bedtime,
           timeToSleep: sc.timeToSleep,
@@ -120,15 +116,12 @@ export function SleepDataForm({
         })),
       });
     } else if (!isDialog) {
-      // Only reset to completely blank if not in a dialog and not initialData
-      // This prevents dialog form from clearing if it's re-rendered without initialData temporarily
       form.reset({
         date: new Date(),
-        stage: "",
         sleepCycles: [{ bedtime: "", timeToSleep: "", whoPutToSleep: "", howFellAsleep: "", wakeTime: "" }],
       });
     }
-  }, [initialData, form.reset, isDialog]); // form.reset is stable, but common to include
+  }, [initialData, form.reset, isDialog]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -141,30 +134,25 @@ export function SleepDataForm({
    * @param {SleepRecordFormData} values - The validated form data.
    */
   function onSubmit(values: SleepRecordFormData) {
-    // In a real app, data would be sent to a backend/Firebase here.
     toast({
       title: initialData ? "נתוני שינה עודכנו!" : "נתוני שינה נשמרו!",
       description: `הנתונים עבור ${babyName} ${initialData ? 'עודכנו' : 'נשלחו'} בהצלחה.`,
     });
     if (onSubmitSuccess) onSubmitSuccess(values);
     if (!initialData && !isDialog) {
-      // Reset form only for new entries not in a dialog, to allow user to enter another record.
-      // For edits or dialogs, parent component usually handles closing/clearing.
       form.reset({
         date: new Date(),
-        stage: "",
         sleepCycles: [{ bedtime: "", timeToSleep: "", whoPutToSleep: "", howFellAsleep: "", wakeTime: "" }],
       });
     }
   }
 
-  // Dynamically choose Card or div as the root component based on whether it's in a dialog
   const CardComponent = isDialog ? 'div' : Card;
   const cardComponentProps = isDialog ? {} : { className: "w-full max-w-2xl mx-auto shadow-xl" };
 
   return (
     <CardComponent {...cardComponentProps}>
-      {!isDialog && ( // Only show CardHeader if not in a dialog
+      {!isDialog && (
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-2">
             <BedDouble className="h-6 w-6 text-primary" />
@@ -173,10 +161,10 @@ export function SleepDataForm({
           <CardDescription>נא למלא את כל הפרטים הרלוונטיים.</CardDescription>
         </CardHeader>
       )}
-      <CardContent className={isDialog ? "pt-0" : ""}> {/* Adjust padding if in dialog */}
+      <CardContent className={isDialog ? "pt-0" : ""}>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            {/* Date and Stage fields */}
+            {/* Date field */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
@@ -204,7 +192,7 @@ export function SleepDataForm({
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
-                          disabled={(date) => // Disable future dates and dates before 1900
+                          disabled={(date) =>
                             date > new Date() || date < new Date("1900-01-01")
                           }
                           initialFocus
@@ -213,19 +201,6 @@ export function SleepDataForm({
                         />
                       </PopoverContent>
                     </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="stage"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-1"><Layers className="h-4 w-4" />שלב בתהליך</FormLabel>
-                    <FormControl>
-                      <Input placeholder="לדוגמה: הסתגלות, ביסוס הרגלים" {...field} />
-                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -334,7 +309,7 @@ export function SleepDataForm({
 
             {/* Form actions: Cancel (if applicable) and Submit */}
             <div className={cn("flex gap-2", isDialog ? "justify-end" : "")}>
-              {onCancel && ( // Show cancel button if onCancel prop is provided (typically in dialogs)
+              {onCancel && (
                  <Button type="button" variant="outline" onClick={onCancel} className="w-full md:w-auto">
                     ביטול
                  </Button>

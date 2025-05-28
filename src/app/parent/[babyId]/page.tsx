@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview Parent-facing page for a specific baby.
  * Allows parents to log sleep data, view coach recommendations, and manage recent sleep records.
@@ -32,63 +33,54 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
+  AlertDialogFooter, // Ensure AlertDialogFooter is imported
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { isParent, logout as authLogout, isCoach } from '@/lib/auth-service'; // Import isCoach
+import { isParent, logout as authLogout, isCoach } from '@/lib/auth-service';
 
 
 export default function ParentBabyPage() {
   const params = useParams();
   const router = useRouter();
-  const babyId = params.babyId as string; // This is actually the parentUsername from routing
+  const babyId = params.babyId as string;
   const [baby, setBaby] = useState<Baby | null>(null);
   const [latestRecord, setLatestRecord] = useState<SleepRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  // State for edit dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [recordToEdit, setRecordToEdit] = useState<SleepRecord | null>(null);
 
-  // State for delete confirmation dialog
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
 
-  // State for showing/hiding full sleep history
   const [showFullHistory, setShowFullHistory] = useState(false);
 
 
   // Route protection and data fetching
   useEffect(() => {
     if (typeof window !== 'undefined' && babyId) {
-      // Allow access if user is coach OR the correct parent
       if (!isCoach() && !isParent(babyId)) {
         router.push('/');
         return;
       }
 
       setIsLoading(true);
-      // Simulate API call
       setTimeout(() => {
         const foundBaby = getBabyByParentUsername(babyId);
         if (foundBaby) {
           setBaby(foundBaby);
           if (foundBaby.sleepRecords && foundBaby.sleepRecords.length > 0) {
-            // Sort records by date descending to get the latest (already sorted in mock-data)
             setLatestRecord(foundBaby.sleepRecords[0]);
           } else {
             setLatestRecord(null);
           }
         } else {
-          // Baby not found for this parentUsername
-          // If the user is not a coach and the baby is not found, log them out and redirect.
-          // If the user IS a coach, they'll see the "baby not found" UI on this page.
           if (!isCoach()) {
-             authLogout(); // Clear any invalid session
+             authLogout();
              router.push('/');
           }
         }
@@ -104,7 +96,6 @@ export default function ParentBabyPage() {
    */
   const refreshLatestRecord = (updatedBaby: Baby) => {
     if (updatedBaby.sleepRecords && updatedBaby.sleepRecords.length > 0) {
-      // Sleep records are assumed to be sorted by date descending in mock-data functions
       setLatestRecord(updatedBaby.sleepRecords[0]);
     } else {
       setLatestRecord(null);
@@ -113,35 +104,29 @@ export default function ParentBabyPage() {
 
   /**
    * Handles submission of a new sleep record.
-   * Adds the new record to the baby's sleep records and updates state.
    * @param {SleepRecordFormData} data - The submitted sleep record form data.
    */
   const handleAddNewFormSubmit = (data: SleepRecordFormData) => {
     if (!baby) return;
     const newRecord: SleepRecord = {
-      id: `new-${Date.now()}`, // Ensure new ID for new record
+      id: `new-${Date.now()}`,
       date: format(data.date, "yyyy-MM-dd"),
-      stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${Date.now()}-${index}`}))
     };
 
     const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Ensure sort
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const updatedBaby = {
         ...baby,
         sleepRecords: updatedSleepRecords
     };
-    // Note: In a real app, this would be an API call.
-    // For mock setup, we update local state. Actual mockBabies array isn't modified here
-    // unless this page also calls an updateBaby function from mock-data.ts upon submission.
     setBaby(updatedBaby);
     refreshLatestRecord(updatedBaby);
   };
 
   /**
    * Handles clicking the edit button for a sleep record.
-   * Sets the record to be edited and opens the edit dialog.
    * @param {SleepRecord} record - The sleep record to edit.
    */
   const handleEditRecordClick = (record: SleepRecord) => {
@@ -151,7 +136,6 @@ export default function ParentBabyPage() {
 
   /**
    * Handles submission of an edited sleep record.
-   * Updates the specific sleep record in the baby's data.
    * @param {SleepRecordFormData} data - The updated sleep record form data.
    */
   const handleEditFormSubmit = (data: SleepRecordFormData) => {
@@ -161,7 +145,6 @@ export default function ParentBabyPage() {
       ...recordToEdit,
       id: recordToEdit.id,
       date: format(data.date, "yyyy-MM-dd"),
-      stage: data.stage,
       sleepCycles: data.sleepCycles.map((sc, index) => ({
         id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`,
         bedtime: sc.bedtime,
@@ -175,7 +158,7 @@ export default function ParentBabyPage() {
     const updatedSleepRecords = (baby.sleepRecords?.map(sr =>
       sr.id === recordToEdit.id ? updatedRecord : sr
     ) || [updatedRecord])
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Ensure sort
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const updatedBaby = {
         ...baby,
@@ -198,7 +181,6 @@ export default function ParentBabyPage() {
 
   /**
    * Handles clicking the delete button for a sleep record.
-   * Sets the record ID to be deleted and opens the confirmation dialog.
    * @param {string} recordId - The ID of the sleep record to delete.
    */
   const handleDeleteRecordClick = (recordId: string) => {
@@ -211,11 +193,8 @@ export default function ParentBabyPage() {
    */
   const confirmDeleteRecord = () => {
     if (!baby || !recordToDeleteId) return;
-
-    // This calls the mock data function to persist the deletion
     const success = deleteSleepRecord(baby.id, recordToDeleteId);
     if (success) {
-      // Update local state to reflect the deletion
       const updatedRecords = baby.sleepRecords?.filter(sr => sr.id !== recordToDeleteId) || [];
       const updatedBaby = { ...baby, sleepRecords: updatedRecords };
       setBaby(updatedBaby);
@@ -241,7 +220,6 @@ export default function ParentBabyPage() {
   };
 
 
-  // Loading state UI
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -251,7 +229,6 @@ export default function ParentBabyPage() {
     );
   }
 
-  // Baby not found UI (or not authorized for this specific baby by a non-coach)
   if (!baby) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
@@ -268,7 +245,6 @@ export default function ParentBabyPage() {
     );
   }
 
-  // Main parent page UI
   return (
     <div className="container mx-auto py-8 px-4">
       <header className="mb-8 text-center">
@@ -281,13 +257,10 @@ export default function ParentBabyPage() {
         </p>
       </header>
 
-      {/* Form to add new sleep data */}
       <SleepDataForm babyName={baby.name} onSubmitSuccess={handleAddNewFormSubmit} />
       
       <CoachRecommendationsDisplay notes={baby.coachNotes} />
 
-
-      {/* Display latest sleep record if available */}
       {latestRecord && (
         <Card className="mt-8 shadow-lg">
           <CardHeader>
@@ -297,7 +270,6 @@ export default function ParentBabyPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p><strong>שלב:</strong> {latestRecord.stage}</p>
             {latestRecord.sleepCycles.map((cycle, index) => (
               <div key={cycle.id || index} className="p-3 border rounded-md bg-background">
                 <h4 className="font-semibold mb-1">מחזור שינה {index + 1}</h4>
@@ -339,7 +311,6 @@ export default function ParentBabyPage() {
         </Card>
       )}
       
-      {/* Edit Record Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[625px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -361,7 +332,6 @@ export default function ParentBabyPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Button to toggle full history display */}
       {baby.sleepRecords && baby.sleepRecords.length > 1 && (
         <div className="mt-6 text-center">
           <Button
@@ -375,9 +345,8 @@ export default function ParentBabyPage() {
         </div>
       )}
 
-      {/* Display older sleep records if showFullHistory is true */}
       {showFullHistory && baby.sleepRecords && baby.sleepRecords.length > 1 && (
-        <div className="mt-6"> {/* Adjusted margin */}
+        <div className="mt-6">
           <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
             <BookOpenText className="h-6 w-6 text-primary" />
             היסטוריית שינה קודמת
@@ -387,7 +356,7 @@ export default function ParentBabyPage() {
               <Card key={record.id} className="shadow-md">
                 <CardHeader className="pb-3 pt-4 px-4">
                   <CardTitle className="text-lg">
-                    {format(new Date(record.date), "PPP", { locale: he })} - (שלב: {record.stage})
+                    {format(new Date(record.date), "PPP", { locale: he })}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 px-4 pb-4">
@@ -412,11 +381,9 @@ export default function ParentBabyPage() {
         </div>
       )}
 
-      {/* Message if no sleep records at all */}
       {baby.sleepRecords && baby.sleepRecords.length === 0 && !latestRecord && (
          <p className="text-center text-muted-foreground py-8 mt-8">אין היסטוריית שינה מתועדת עבור {baby.name}.</p>
       )}
-
 
       <div className="mt-12 text-center">
          <Button variant="link" onClick={handleLogout}>התנתקות וחזרה למסך הכניסה</Button>

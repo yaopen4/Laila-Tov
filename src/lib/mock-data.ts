@@ -14,12 +14,11 @@ export interface SleepCycle {
 }
 
 /**
- * Represents a collection of sleep cycles for a specific date and process stage.
+ * Represents a collection of sleep cycles for a specific date.
  */
 export interface SleepRecord {
   id: string;
   date: string; // YYYY-MM-DD format
-  stage: string; // Stage in the sleep coaching process, e.g., "הסתגלות"
   sleepCycles: SleepCycle[];
 }
 
@@ -67,7 +66,6 @@ export let mockBabies: Baby[] = [
       {
         id: "sr1",
         date: "2024-07-20", // Latest record
-        stage: "הסתגלות",
         sleepCycles: [
           { id: "sc1", bedtime: "19:00", timeToSleep: "30 דקות", whoPutToSleep: "אמא", howFellAsleep: "הנקה", wakeTime: "06:00" },
           { id: "sc2", bedtime: "10:00", timeToSleep: "15 דקות", whoPutToSleep: "אבא", howFellAsleep: "נענוע קל", wakeTime: "11:30" },
@@ -76,7 +74,6 @@ export let mockBabies: Baby[] = [
       {
         id: "sr1-older",
         date: "2024-07-19", // Older record
-        stage: "הסתגלות - יום קודם",
         sleepCycles: [
           { id: "sc1-older-c1", bedtime: "19:30", timeToSleep: "40 דקות", whoPutToSleep: "אבא", howFellAsleep: "בקבוק", wakeTime: "05:00" },
         ],
@@ -101,7 +98,6 @@ export let mockBabies: Baby[] = [
       {
         id: "sr2-latest",
         date: "2024-07-21",
-        stage: "ביסוס הרגלים",
         sleepCycles: [
           { id: "sc3-latest", bedtime: "20:00", timeToSleep: "20 דקות", whoPutToSleep: "אמא", howFellAsleep: "שיר ערש", wakeTime: "05:30" },
         ],
@@ -109,7 +105,6 @@ export let mockBabies: Baby[] = [
       {
         id: "sr2-older",
         date: "2024-07-20",
-        stage: "ביסוס הרגלים - יום קודם",
         sleepCycles: [
           { id: "sc3-older", bedtime: "20:15", timeToSleep: "25 דקות", whoPutToSleep: "אבא", howFellAsleep: "ליטוף", wakeTime: "06:00" },
         ],
@@ -134,7 +129,6 @@ export let mockBabies: Baby[] = [
       {
         id: "sr3-latest",
         date: "2024-07-22",
-        stage: "התחלה",
         sleepCycles: [
           { id: "sc4-latest", bedtime: "21:00", timeToSleep: "10 דקות", whoPutToSleep: "אמא", howFellAsleep: "לבד במיטה", wakeTime: "07:00" },
         ],
@@ -338,4 +332,3 @@ export type SleepRecordFormData = Omit<SleepRecord, 'id' | 'sleepCycles'> & {
   sleepCycles: Array<Omit<SleepCycle, 'id'| 'wakeTime'> & { wakeTime?: string }>; // Ensure wakeTime is correctly typed as optional string
   date: Date; // Date object from calendar input
 };
-

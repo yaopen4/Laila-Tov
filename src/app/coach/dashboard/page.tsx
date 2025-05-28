@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview Coach dashboard page.
  * Displays a list of active babies, allows searching, and exporting data.
@@ -93,7 +94,6 @@ export default function CoachDashboardPage() {
     
     const csvHeaders = {
       date: 'תאריך',
-      stage: 'שלב בתהליך',
       cycleNumber: 'מספר מחזור שינה',
       bedtime: 'שעת השכבה',
       timeToSleep: 'כמה זמן עד שנרדם/ה',
@@ -111,7 +111,6 @@ export default function CoachDashboardPage() {
             record.sleepCycles.forEach((cycle, index) => {
               babyDataForCSV.push({
                 date: record.date,
-                stage: record.stage,
                 cycleNumber: index + 1,
                 bedtime: cycle.bedtime,
                 timeToSleep: cycle.timeToSleep,
@@ -123,7 +122,6 @@ export default function CoachDashboardPage() {
           } else { // If a record has no sleep cycles
             babyDataForCSV.push({
               date: record.date,
-              stage: record.stage,
               cycleNumber: '-', bedtime: '-', timeToSleep: '-',
               whoPutToSleep: '-', howFellAsleep: '-', wakeTime: '-',
             });
@@ -138,7 +136,6 @@ export default function CoachDashboardPage() {
       }
       
       const csvString = convertToCSV(babyDataForCSV, csvHeaders);
-      // Add BOM for Excel to correctly interpret UTF-8 Hebrew characters
       const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
@@ -149,7 +146,6 @@ export default function CoachDashboardPage() {
       document.body.appendChild(link);
       link.click();
       
-      // Delay cleanup to ensure download initiation for multiple files
       setTimeout(() => {
         if (link.parentElement) {
             document.body.removeChild(link);
@@ -192,7 +188,7 @@ export default function CoachDashboardPage() {
                 margin-bottom: 20px;
               }
               .baby-section:last-child .page-break {
-                page-break-after: auto; /* No page break after the last baby */
+                page-break-after: auto;
                 border-bottom: none;
               }
               table { 
@@ -237,7 +233,7 @@ export default function CoachDashboardPage() {
 
       if (baby.sleepRecords && baby.sleepRecords.length > 0) {
         baby.sleepRecords.forEach(record => {
-          htmlContent += `<h4>רשומת שינה: ${format(new Date(record.date), "PPP", { locale: he })} (שלב: ${record.stage})</h4>`;
+          htmlContent += `<h4>רשומת שינה: ${format(new Date(record.date), "PPP", { locale: he })}</h4>`;
           if (record.sleepCycles && record.sleepCycles.length > 0) {
             htmlContent += `
               <table>
@@ -273,12 +269,11 @@ export default function CoachDashboardPage() {
       } else {
         htmlContent += `<p class="no-records">אין נתוני שינה זמינים לתינוק זה.</p>`;
       }
-      htmlContent += `</div>`; // Close baby-section
+      htmlContent += `</div>`;
     });
 
     htmlContent += `</body></html>`;
 
-    // Use a hidden iframe to trigger print
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.width = '0';
@@ -290,13 +285,12 @@ export default function CoachDashboardPage() {
     iframe.srcdoc = htmlContent;
     iframe.onload = function() {
       try {
-        iframe.contentWindow?.focus(); // Required for some browsers
+        iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch (error) {
         console.error("Error during print:", error);
         alert("אירעה שגיאה בעת ניסיון הפקת ה-PDF. נסה שוב או בדוק את הגדרות הדפדפן.");
       } finally {
-        // Delay removal to allow print dialog to fully process
         setTimeout(() => {
           if (iframe.parentElement) {
             document.body.removeChild(iframe);
@@ -313,8 +307,8 @@ export default function CoachDashboardPage() {
         <div className="max-w-7xl mx-auto">
           <DashboardHeader 
             onSearch={handleSearch} 
-            onExportCSV={() => {}} // Placeholder while loading
-            onExportPDF={() => {}} // Placeholder while loading
+            onExportCSV={() => {}}
+            onExportPDF={() => {}}
           />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map(i => (
@@ -334,8 +328,6 @@ export default function CoachDashboardPage() {
   
 
   return (
-    // The root div of the page content.
-    // Height management is now handled by SidebarInset and its parent flex container.
     <div>
       <div className="max-w-7xl mx-auto">
         <DashboardHeader 
@@ -348,4 +340,3 @@ export default function CoachDashboardPage() {
     </div>
   );
 }
-
