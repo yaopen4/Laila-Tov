@@ -1,13 +1,17 @@
 
 /**
- * @fileoverview Page for viewing and managing archived baby profiles.
+ * @fileoverview Page for viewing and managing archived baby profiles from Firestore.
  * Consultants can unarchive babies or permanently delete them from this page.
  */
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Baby } from '@/lib/mock-data';
-import { getArchivedBabies, unarchiveBaby, deleteBabyPermanently } from '@/lib/mock-data';
+import type { Baby } from '@/types';
+import { 
+  getArchivedBabiesFromFirestore, 
+  unarchiveBabyInFirestore, 
+  deleteBabyPermanentlyFromFirestore 
+} from '@/services/babyService';
 import {
   Table,
   TableBody,
@@ -34,8 +38,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; // AlertDialogTrigger removed as it's used via Button onClick
-
+} from "@/components/ui/alert-dialog";
 
 export default function ArchivePage() {
   const [archivedBabies, setArchivedBabies] = useState<Baby[]>([]);
@@ -43,19 +46,28 @@ export default function ArchivePage() {
   const { toast } = useToast();
   const [babyToDelete, setBabyToDelete] = useState<Baby | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
 
   /**
-   * Fetches the list of archived babies from mock data.
-   * Simulates an API call with a timeout.
+   * Fetches the list of archived babies from Firestore.
    */
-  const fetchArchivedBabies = useCallback(() => {
+  const fetchArchivedBabies = useCallback(async () => {
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setArchivedBabies(getArchivedBabies());
+    try {
+      const babies = await getArchivedBabiesFromFirestore();
+      setArchivedBabies(babies);
+    } catch (error) {
+      console.error("Error fetching archived babies:", error);
+      toast({
+        title: "שגיאה בטעינת הארכיון",
+        description: "לא ניתן היה לטעון את רשימת התינוקות מהארכיון.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 500);
-  }, []);
+    }
+  }, [toast]);
 
   useEffect(() => {
     fetchArchivedBabies();
@@ -66,19 +78,24 @@ export default function ArchivePage() {
    * @param {string} babyId - The ID of the baby to unarchive.
    * @param {string} babyName - The full name of the baby for toast messages.
    */
-  const handleUnarchive = (babyId: string, babyName: string) => {
-    if (unarchiveBaby(babyId)) {
+  const handleUnarchive = async (babyId: string, babyName: string) => {
+    setIsProcessing(true);
+    try {
+      await unarchiveBabyInFirestore(babyId);
       toast({
         title: "תינוק שוחזר מהארכיון",
         description: `${babyName} הועבר בהצלחה לרשימת התינוקות הפעילים.`,
       });
       fetchArchivedBabies(); // Refresh list
-    } else {
+    } catch (error) {
+      console.error("Error unarchiving baby:", error);
       toast({
         title: "שגיאה בשחזור",
         description: `לא ניתן היה לשחזר את ${babyName} מהארכיון.`,
         variant: "destructive",
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -94,23 +111,28 @@ export default function ArchivePage() {
   /**
    * Confirms and executes the permanent deletion of a baby.
    */
-  const confirmDeleteBaby = () => {
+  const confirmDeleteBaby = async () => {
     if (!babyToDelete) return;
-    if (deleteBabyPermanently(babyToDelete.id)) {
+    setIsProcessing(true);
+    try {
+      await deleteBabyPermanentlyFromFirestore(babyToDelete.id);
       toast({
         title: "תינוק נמחק לצמיתות",
         description: `התינוק ${babyToDelete.name} ${babyToDelete.familyName} נמחק מהמערכת.`,
       });
       fetchArchivedBabies(); // Refresh list
-    } else {
+    } catch (error) {
+      console.error("Error deleting baby permanently:", error);
       toast({
         title: "שגיאה במחיקה",
         description: `לא ניתן היה למחוק את ${babyToDelete.name} ${babyToDelete.familyName} לצמיתות.`,
         variant: "destructive",
       });
+    } finally {
+      setIsProcessing(false);
+      setIsDeleteDialogOpen(false);
+      setBabyToDelete(null);
     }
-    setIsDeleteDialogOpen(false);
-    setBabyToDelete(null);
   };
 
   if (isLoading) {
@@ -138,7 +160,7 @@ export default function ArchivePage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-primary">ארכיון תינוקות</h1>
         <Link href="/coach/dashboard" passHref legacyBehavior>
-          <Button variant="outline">חזרה ללוח הבקרה</Button>
+          <Button variant="outline" disabled={isProcessing}>חזרה ללוח הבקרה</Button>
         </Link>
       </div>
 
@@ -172,6 +194,7 @@ export default function ArchivePage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleUnarchive(baby.id, `${baby.name} ${baby.familyName}`)}
+                        disabled={isProcessing}
                       >
                         <ArchiveRestore className="me-2 h-4 w-4" />
                         הוצא מארכיון
@@ -180,6 +203,7 @@ export default function ArchivePage() {
                         variant="destructive"
                         size="sm"
                         onClick={() => openDeleteDialog(baby)}
+                        disabled={isProcessing}
                       >
                         <Trash2 className="me-2 h-4 w-4" />
                         מחק לצמיתות
@@ -205,8 +229,10 @@ export default function ArchivePage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setBabyToDelete(null); }}>ביטול</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteBaby}>מחק לצמיתות</AlertDialogAction>
+              <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setBabyToDelete(null); }} disabled={isProcessing}>ביטול</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteBaby} disabled={isProcessing}>
+                {isProcessing ? "מוחק..." : "מחק לצמיתות"}
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

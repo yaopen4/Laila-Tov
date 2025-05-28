@@ -2,14 +2,22 @@
 /**
  * @fileoverview Parent-facing page for a specific baby.
  * Allows parents to log sleep data, view consultant recommendations, and manage recent sleep records.
- * Includes route protection.
+ * Uses Firebase Auth for route protection and Firestore for data and real-time updates.
  */
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import type { Baby, SleepRecord, SleepRecordFormData } from '@/lib/mock-data';
-import { getBabyByParentUsername, deleteSleepRecord } from '@/lib/mock-data';
+import { onSnapshot, doc, collection, query, orderBy, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Baby, SleepRecord, SleepRecordFormData } from '@/types';
+import { 
+  getBabyByParentUsernameFromFirestore, 
+  addSleepRecordToFirestore,
+  updateSleepRecordInFirestore,
+  deleteSleepRecordFromFirestore,
+  getSleepRecordsForBabyFromFirestore
+} from '@/services/babyService';
 import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
@@ -18,7 +26,6 @@ import { AlertCircle, History, Edit3, Trash2, BookOpenText, ChevronDown, Chevron
 import { Button } from '@/components/ui/button';
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
-import Link from 'next/link';
 import {
   Dialog,
   DialogContent,
@@ -33,22 +40,25 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter, // Ensure AlertDialogFooter is imported
+  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { isParent, logout as authLogout, isCoach } from '@/lib/auth-service';
+import { onAuthChange, logout as firebaseLogout, isParentUser, isCoachUser, type AuthUser } from '@/services/authService';
+import { Skeleton } from '@/components/ui/skeleton';
 
 
 export default function ParentBabyPage() {
   const params = useParams();
   const router = useRouter();
-  const babyId = params.babyId as string;
+  const babyId = params.babyId as string; // This is the parentUsername
   const [baby, setBaby] = useState<Baby | null>(null);
-  const [latestRecord, setLatestRecord] = useState<SleepRecord | null>(null);
+  const [sleepRecords, setSleepRecords] = useState<SleepRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const { toast } = useToast();
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -56,73 +66,118 @@ export default function ParentBabyPage() {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
-
+  const [isProcessing, setIsProcessing] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
 
 
-  // Route protection and data fetching
+  // Auth check and initial data fetching
   useEffect(() => {
-    if (typeof window !== 'undefined' && babyId) {
-      if (!isCoach() && !isParent(babyId)) {
-        router.push('/');
-        return;
-      }
-
-      setIsLoading(true);
-      setTimeout(() => {
-        const foundBaby = getBabyByParentUsername(babyId);
-        if (foundBaby) {
-          setBaby(foundBaby);
-          if (foundBaby.sleepRecords && foundBaby.sleepRecords.length > 0) {
-            setLatestRecord(foundBaby.sleepRecords[0]);
-          } else {
-            setLatestRecord(null);
+    const unsubscribeAuth = onAuthChange(async (user) => {
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+      if (user) {
+        if (isCoachUser(user) || isParentUser(user, babyId)) {
+          // User is authorized
+          setIsLoading(true);
+          try {
+            const foundBaby = await getBabyByParentUsernameFromFirestore(babyId);
+            if (foundBaby) {
+              setBaby(foundBaby);
+              // Initial fetch of sleep records, listener will take over for updates
+              // const records = await getSleepRecordsForBabyFromFirestore(foundBaby.id);
+              // setSleepRecords(records); // Listener below will handle this
+            } else {
+              setBaby(null); // Baby not found for this parentUsername
+              if (!isCoachUser(user)) { // If parent and baby not found, logout. Coach can see "not found"
+                await firebaseLogout();
+                router.push('/');
+              }
+            }
+          } catch (error) {
+            console.error("Error fetching initial baby data:", error);
+            toast({ title: "שגיאה בטעינת נתונים", variant: "destructive" });
+          } finally {
+            setIsLoading(false);
           }
         } else {
-          if (!isCoach()) {
-             authLogout();
-             router.push('/');
-          }
+          // Not authorized for this babyId
+          await firebaseLogout(); // Logout if trying to access unauthorized page
+          router.push('/');
         }
-        setIsLoading(false);
-      }, 500);
-    }
-  }, [babyId, router]);
+      } else {
+        // No user logged in
+        router.push('/');
+      }
+    });
+    return () => unsubscribeAuth();
+  }, [babyId, router, toast]);
 
 
-  /**
-   * Refreshes the `latestRecord` state based on the provided baby's sleep records.
-   * @param {Baby} updatedBaby - The baby object with potentially updated sleep records.
-   */
-  const refreshLatestRecord = (updatedBaby: Baby) => {
-    if (updatedBaby.sleepRecords && updatedBaby.sleepRecords.length > 0) {
-      setLatestRecord(updatedBaby.sleepRecords[0]);
-    } else {
-      setLatestRecord(null);
+  // Real-time listener for Baby document changes (e.g., coachNotes)
+  useEffect(() => {
+    if (!baby?.id) return;
+
+    const babyDocRef = doc(db, 'babies', baby.id);
+    const unsubscribeBaby = onSnapshot(babyDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setBaby({ id: docSnap.id, ...docSnap.data() } as Baby);
+      } else {
+        // Baby document might have been deleted
+        setBaby(null);
+      }
+    }, (error) => {
+      console.error("Error listening to baby document:", error);
+      toast({ title: "שגיאה בעדכון נתוני תינוק", variant: "destructive" });
+    });
+
+    return () => unsubscribeBaby();
+  }, [baby?.id, toast]);
+
+
+  // Real-time listener for Sleep Records
+  useEffect(() => {
+    if (!baby?.id) {
+      setSleepRecords([]); // Clear records if no baby
+      return;
     }
-  };
+    
+    setIsLoading(true); // Show loading for sleep records too
+    const sleepRecordsRef = collection(db, 'babies', baby.id, 'sleepRecords');
+    const q = query(sleepRecordsRef, orderBy('timestamp', 'desc'));
+
+    const unsubscribeSleep = onSnapshot(q, (querySnapshot) => {
+      const records = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as SleepRecord));
+      setSleepRecords(records);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error listening to sleep records:", error);
+      toast({ title: "שגיאה בעדכון רשומות שינה", variant: "destructive" });
+      setIsLoading(false);
+    });
+
+    return () => unsubscribeSleep();
+  }, [baby?.id, toast]);
+
 
   /**
    * Handles submission of a new sleep record.
    * @param {SleepRecordFormData} data - The submitted sleep record form data.
    */
-  const handleAddNewFormSubmit = (data: SleepRecordFormData) => {
+  const handleAddNewFormSubmit = async (data: SleepRecordFormData) => {
     if (!baby) return;
-    const newRecord: SleepRecord = {
-      id: `new-${Date.now()}`,
-      date: format(data.date, "yyyy-MM-dd"),
-      sleepCycles: data.sleepCycles.map((sc, index) => ({ ...sc, id: `sc-new-${Date.now()}-${index}`}))
-    };
-
-    const updatedSleepRecords = [newRecord, ...(baby.sleepRecords || [])]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    const updatedBaby = {
-        ...baby,
-        sleepRecords: updatedSleepRecords
-    };
-    setBaby(updatedBaby);
-    refreshLatestRecord(updatedBaby);
+    setIsProcessing(true);
+    try {
+      await addSleepRecordToFirestore(baby.id, data);
+      toast({
+        title: "נתוני שינה נשמרו!",
+        description: `הנתונים עבור ${baby.name} נשלחו בהצלחה.`,
+      });
+    } catch (error) {
+      console.error("Error adding sleep record:", error);
+      toast({ title: "שגיאה בשמירת נתונים", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   /**
@@ -138,93 +193,78 @@ export default function ParentBabyPage() {
    * Handles submission of an edited sleep record.
    * @param {SleepRecordFormData} data - The updated sleep record form data.
    */
-  const handleEditFormSubmit = (data: SleepRecordFormData) => {
+  const handleEditFormSubmit = async (data: SleepRecordFormData) => {
     if (!recordToEdit || !baby) return;
-
-    const updatedRecord: SleepRecord = {
-      ...recordToEdit,
-      id: recordToEdit.id,
-      date: format(data.date, "yyyy-MM-dd"),
-      sleepCycles: data.sleepCycles.map((sc, index) => ({
-        id: recordToEdit.sleepCycles[index]?.id || `sc-updated-${Date.now()}-${index}`,
-        bedtime: sc.bedtime,
-        timeToSleep: sc.timeToSleep,
-        whoPutToSleep: sc.whoPutToSleep,
-        howFellAsleep: sc.howFellAsleep,
-        wakeTime: sc.wakeTime,
-      })),
-    };
-
-    const updatedSleepRecords = (baby.sleepRecords?.map(sr =>
-      sr.id === recordToEdit.id ? updatedRecord : sr
-    ) || [updatedRecord])
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    const updatedBaby = {
-        ...baby,
-        sleepRecords: updatedSleepRecords
-    };
-    setBaby(updatedBaby);
-    refreshLatestRecord(updatedBaby);
-
-    setIsEditDialogOpen(false);
-    setRecordToEdit(null);
+    setIsProcessing(true);
+    try {
+      await updateSleepRecordInFirestore(baby.id, recordToEdit.id, data);
+      toast({
+        title: "נתוני שינה עודכנו!",
+        description: `הנתונים עודכנו בהצלחה.`,
+      });
+      setIsEditDialogOpen(false);
+      setRecordToEdit(null);
+    } catch (error) {
+      console.error("Error updating sleep record:", error);
+      toast({ title: "שגיאה בעדכון נתונים", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
   };
-
-  /**
-   * Handles cancelling the edit operation from the dialog.
-   */
+  
   const handleCancelEdit = () => {
     setIsEditDialogOpen(false);
     setRecordToEdit(null);
   };
 
-  /**
-   * Handles clicking the delete button for a sleep record.
-   * @param {string} recordId - The ID of the sleep record to delete.
-   */
   const handleDeleteRecordClick = (recordId: string) => {
     setRecordToDeleteId(recordId);
     setIsDeleteDialogOpen(true);
   };
 
-  /**
-   * Confirms and executes the deletion of a sleep record.
-   */
-  const confirmDeleteRecord = () => {
+  const confirmDeleteRecord = async () => {
     if (!baby || !recordToDeleteId) return;
-    const success = deleteSleepRecord(baby.id, recordToDeleteId);
-    if (success) {
-      const updatedRecords = baby.sleepRecords?.filter(sr => sr.id !== recordToDeleteId) || [];
-      const updatedBaby = { ...baby, sleepRecords: updatedRecords };
-      setBaby(updatedBaby);
-      refreshLatestRecord(updatedBaby);
+    setIsProcessing(true);
+    try {
+      await deleteSleepRecordFromFirestore(baby.id, recordToDeleteId);
       toast({
         title: "רשומה נמחקה",
         description: "רשומת השינה נמחקה בהצלחה.",
       });
-    } else {
-      toast({
-        title: "שגיאה במחיקה",
-        description: "לא ניתן היה למחוק את רשומת השינה.",
-        variant: "destructive",
-      });
+    } catch (error) {
+      console.error("Error deleting sleep record:", error);
+      toast({ title: "שגיאה במחיקה", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+      setIsDeleteDialogOpen(false);
+      setRecordToDeleteId(null);
     }
-    setIsDeleteDialogOpen(false);
-    setRecordToDeleteId(null);
   };
 
-  const handleLogout = () => {
-    authLogout();
-    router.push('/');
+  const handleLogout = async () => {
+    setIsProcessing(true);
+    try {
+      await firebaseLogout();
+      toast({ title: "התנתקת בהצלחה" });
+      router.push('/');
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast({ title: "שגיאה בהתנתקות", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
+  const latestRecord = sleepRecords.length > 0 ? sleepRecords[0] : null;
 
-  if (isLoading) {
+  if (isAuthLoading || (isLoading && !baby)) { // Show loading if auth is loading OR (data is loading AND baby is not yet set)
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <AppLogo className="mb-8 text-4xl" />
-        <p className="text-lg text-muted-foreground">טוען נתונים...</p>
+        <Skeleton className="h-8 w-48 mb-4" />
+        <Skeleton className="h-6 w-64 mb-8" />
+        <Skeleton className="h-48 w-full max-w-2xl mb-8" />
+        <Skeleton className="h-32 w-full max-w-2xl" />
       </div>
     );
   }
@@ -240,7 +280,7 @@ export default function ParentBabyPage() {
           <br />
           נא לוודא ששם המשתמש נכון או לפנות ליועצת השינה.
         </p>
-        <Button onClick={handleLogout}>חזרה למסך הכניסה</Button>
+        <Button onClick={handleLogout} disabled={isProcessing}>חזרה למסך הכניסה</Button>
       </div>
     );
   }
@@ -257,7 +297,7 @@ export default function ParentBabyPage() {
         </p>
       </header>
 
-      <SleepDataForm babyName={baby.name} onSubmitSuccess={handleAddNewFormSubmit} />
+      <SleepDataForm babyName={baby.name} onSubmitSuccess={handleAddNewFormSubmit} isSubmitting={isProcessing} />
       
       <CoachRecommendationsDisplay notes={baby.coachNotes} />
 
@@ -280,14 +320,15 @@ export default function ParentBabyPage() {
                 <p className="text-sm"><strong>שעת יקיצה:</strong> {cycle.wakeTime || '-'}</p>
               </div>
             ))}
+            {!isCoachUser(currentUser) && ( // Only show edit/delete to the parent, not the coach on this view
             <div className="flex gap-2 mt-4">
-              <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)}>
+              <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)} disabled={isProcessing}>
                 <Edit3 className="me-2 h-4 w-4" />
                 ערוך רשומה
               </Button>
               <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm" onClick={() => latestRecord && handleDeleteRecordClick(latestRecord.id)}>
+                  <Button variant="destructive" size="sm" onClick={() => latestRecord && handleDeleteRecordClick(latestRecord.id)} disabled={isProcessing}>
                     <Trash2 className="me-2 h-4 w-4" />
                     מחק רשומה
                   </Button>
@@ -301,12 +342,15 @@ export default function ParentBabyPage() {
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setRecordToDeleteId(null); }}>ביטול</AlertDialogCancel>
-                    <AlertDialogAction onClick={confirmDeleteRecord}>מחק</AlertDialogAction>
+                    <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setRecordToDeleteId(null); }} disabled={isProcessing}>ביטול</AlertDialogCancel>
+                    <AlertDialogAction onClick={confirmDeleteRecord} disabled={isProcessing}>
+                      {isProcessing ? "מוחק..." : "מחק"}
+                    </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
             </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -327,17 +371,19 @@ export default function ParentBabyPage() {
               onCancel={handleCancelEdit}
               submitButtonText="עדכן רשומה"
               isDialog={true}
+              isSubmitting={isProcessing}
             />
           )}
         </DialogContent>
       </Dialog>
 
-      {baby.sleepRecords && baby.sleepRecords.length > 1 && (
+      {sleepRecords.length > 1 && (
         <div className="mt-6 text-center">
           <Button
             variant="outline"
             onClick={() => setShowFullHistory(!showFullHistory)}
             className="w-full md:w-auto"
+            disabled={isProcessing}
           >
             {showFullHistory ? "הסתר היסטוריית שינה" : "הצג היסטוריית שינה מלאה"}
             {showFullHistory ? <ChevronUp className="ms-2 h-4 w-4" /> : <ChevronDown className="ms-2 h-4 w-4" />}
@@ -345,14 +391,14 @@ export default function ParentBabyPage() {
         </div>
       )}
 
-      {showFullHistory && baby.sleepRecords && baby.sleepRecords.length > 1 && (
+      {showFullHistory && sleepRecords.length > 1 && (
         <div className="mt-6">
           <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
             <BookOpenText className="h-6 w-6 text-primary" />
             היסטוריית שינה קודמת
           </h2>
           <div className="space-y-6">
-            {baby.sleepRecords.slice(1).map(record => (
+            {sleepRecords.slice(1).map(record => (
               <Card key={record.id} className="shadow-md">
                 <CardHeader className="pb-3 pt-4 px-4">
                   <CardTitle className="text-lg">
@@ -381,12 +427,12 @@ export default function ParentBabyPage() {
         </div>
       )}
 
-      {baby.sleepRecords && baby.sleepRecords.length === 0 && !latestRecord && (
+      {sleepRecords.length === 0 && !latestRecord && (
          <p className="text-center text-muted-foreground py-8 mt-8">אין היסטוריית שינה מתועדת עבור {baby.name}.</p>
       )}
 
       <div className="mt-12 text-center">
-         <Button variant="link" onClick={handleLogout}>התנתקות וחזרה למסך הכניסה</Button>
+         <Button variant="link" onClick={handleLogout} disabled={isProcessing}>התנתקות וחזרה למסך הכניסה</Button>
       </div>
     </div>
   );

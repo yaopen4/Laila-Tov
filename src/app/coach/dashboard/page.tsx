@@ -1,13 +1,16 @@
 
 /**
  * @fileoverview Consultant dashboard page.
- * Displays a list of active babies, allows searching, and exporting data.
+ * Displays a list of active babies from Firestore, allows searching, and exporting data.
+ * Implements real-time updates for the baby list.
  */
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Baby, SleepRecord, SleepCycle } from '@/lib/mock-data'; // Ensure all necessary types are imported
-import { getActiveBabies } from '@/lib/mock-data';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Baby, SleepRecord, SleepCycle } from '@/types';
+import { getActiveBabiesFromFirestore, getSleepRecordsForBabyFromFirestore } from '@/services/babyService';
 import DashboardHeader from '@/components/coach/dashboard-header';
 import BabyList from '@/components/coach/baby-list';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,7 +33,7 @@ import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 
 /**
- * Escapes HTML special characters in a string.
+ * Escapes HTML special characters in a string for safe injection into HTML templates (e.g., for PDF export).
  * @param {string | null | undefined} unsafe - The string to escape.
  * @returns {string} The escaped string.
  */
@@ -56,26 +59,48 @@ export default function CoachDashboardPage() {
   const [selectedBabyIds, setSelectedBabyIds] = useState<string[]>([]);
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('csv');
   const [selectAllBabies, setSelectAllBabies] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
 
-  /**
-   * Fetches and sets the list of active babies.
-   * Simulates an API call.
-   */
-  const fetchAndSetBabies = useCallback(() => {
-    setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      const activeBabies = getActiveBabies();
-      setBabies(activeBabies);
-      setFilteredBabies(activeBabies); // Initialize filtered list
-      setIsLoading(false);
-    }, 500);
-  }, []);
-
+  // Real-time listener for active babies
   useEffect(() => {
-    fetchAndSetBabies();
-  }, [fetchAndSetBabies]);
+    setIsLoading(true);
+    const q = query(
+      collection(db, 'babies'),
+      where('isArchived', '==', false),
+      orderBy('familyName'),
+      orderBy('name')
+    );
+
+    const unsubscribe = onSnapshot(q, 
+      async (querySnapshot) => {
+        const activeBabiesPromises = querySnapshot.docs.map(async (docSnap) => {
+          const babyData = { id: docSnap.id, ...docSnap.data() } as Baby;
+          // Fetch sleep records for each baby to have complete data for card display / export
+          // This can be optimized if not all sleep data is needed immediately on the dashboard
+          const sleepRecords = await getSleepRecordsForBabyFromFirestore(babyData.id);
+          return { ...babyData, sleepRecords };
+        });
+        const activeBabies = await Promise.all(activeBabiesPromises);
+
+        setBabies(activeBabies);
+        setFilteredBabies(activeBabies); // Initialize filtered list
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching active babies in real-time: ", error);
+        toast({
+          title: "שגיאה בטעינת נתונים",
+          description: "לא ניתן היה לטעון את רשימת התינוקות.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe(); // Cleanup listener on component unmount
+  }, [toast]);
+
 
   // Effect to filter babies based on search term
   useEffect(() => {
@@ -84,7 +109,7 @@ export default function CoachDashboardPage() {
       item.name.toLowerCase().includes(lowercasedFilter) ||
       item.familyName.toLowerCase().includes(lowercasedFilter) ||
       item.motherName.toLowerCase().includes(lowercasedFilter) ||
-      item.fatherName.toLowerCase().includes(lowercasedFilter)
+      (item.fatherName && item.fatherName.toLowerCase().includes(lowercasedFilter))
     );
     setFilteredBabies(filteredData);
   }, [searchTerm, babies]);
@@ -108,20 +133,11 @@ export default function CoachDashboardPage() {
     setSelectedBabyIds(prevSelected =>
       checked ? [...prevSelected, babyId] : prevSelected.filter(id => id !== babyId)
     );
-  };
-
-  useEffect(() => {
-    if (selectAllBabies) {
-      setSelectedBabyIds(babies.map(b => b.id));
-    } else {
-      // This part is tricky: if selectAllBabies is unchecked *after* some were manually selected,
-      // we don't want to clear them unless the uncheck was meant to clear all.
-      // For simplicity, unchecking "select all" clears all if all were selected.
-      if (selectedBabyIds.length === babies.length && babies.length > 0) {
-         // only clear if "select all" was effectively unchecking all
-      }
+    // If unchecking an item, uncheck "select all"
+    if (!checked) {
+      setSelectAllBabies(false);
     }
-  }, [selectAllBabies, babies, selectedBabyIds.length]);
+  };
 
   const handleSelectAllChange = (checked: boolean) => {
     setSelectAllBabies(checked);
@@ -131,6 +147,19 @@ export default function CoachDashboardPage() {
       setSelectedBabyIds([]);
     }
   };
+  
+  // Effect to update "select all" checkbox if all items are manually selected/deselected
+  useEffect(() => {
+    if (babies.length > 0 && selectedBabyIds.length === babies.length) {
+      setSelectAllBabies(true);
+    } else if (selectedBabyIds.length === 0 && !selectAllBabies && babies.length > 0) {
+      // This case is tricky; if selectAllBabies was explicitly unchecked, selectedBabyIds is already empty.
+      // We want to ensure selectAllBabies is false if not all are selected.
+      if(selectAllBabies && selectedBabyIds.length < babies.length) {
+        setSelectAllBabies(false);
+      }
+    }
+  }, [selectedBabyIds, babies, selectAllBabies]);
 
 
   /**
@@ -138,32 +167,24 @@ export default function CoachDashboardPage() {
    * Generates one CSV file per baby.
    * @param {Baby[]} babiesToExport - The list of babies to export.
    */
-  const exportBabiesToCSV = (babiesToExport: Baby[]) => {
+  const exportBabiesToCSV = async (babiesToExport: Baby[]) => {
     if (babiesToExport.length === 0) {
       toast({ title: 'לא נבחרו תינוקות', description: 'יש לבחור לפחות תינוק אחד לייצוא.', variant: 'destructive' });
       return;
     }
+    setIsExporting(true);
 
-    // Local escapeCSV, as the global one might not be in this direct scope if moved.
     const localEscapeCSV = (field: any): string => {
-      if (field === null || field === undefined) {
-        return '';
-      }
+      if (field === null || field === undefined) return '';
       const stringField = String(field);
-      if (stringField.includes(',') || stringField.includes('"') || stringField.includes('\n') || stringField.includes('\r')) {
-        return `"${stringField.replace(/"/g, '""')}"`;
-      }
-      return stringField;
+      return `"${stringField.replace(/"/g, '""')}"`;
     };
 
     const convertToCSV = (data: Record<string, any>[], headers: Record<string, string>): string => {
       const headerKeys = Object.keys(headers);
       const hebrewHeaderValues = Object.values(headers);
-
       const headerRow = hebrewHeaderValues.map(localEscapeCSV).join(',');
-      const dataRows = data.map(row =>
-        headerKeys.map(key => localEscapeCSV(row[key])).join(',')
-      );
+      const dataRows = data.map(row => headerKeys.map(key => localEscapeCSV(row[key])).join(','));
       return [headerRow, ...dataRows].join('\n');
     };
     
@@ -177,11 +198,13 @@ export default function CoachDashboardPage() {
       wakeTime: 'שעת יקיצה'
     };
 
-    babiesToExport.forEach(baby => {
+    for (const baby of babiesToExport) {
       const babyDataForCSV: any[] = [];
+      // Ensure sleepRecords are fetched if not already on the baby object from the dashboard state
+      const sleepRecords = baby.sleepRecords || await getSleepRecordsForBabyFromFirestore(baby.id);
 
-      if (baby.sleepRecords && baby.sleepRecords.length > 0) {
-        baby.sleepRecords.forEach(record => {
+      if (sleepRecords && sleepRecords.length > 0) {
+        sleepRecords.forEach(record => {
           if (record.sleepCycles && record.sleepCycles.length > 0) {
             record.sleepCycles.forEach((cycle, index) => {
               babyDataForCSV.push({
@@ -195,25 +218,15 @@ export default function CoachDashboardPage() {
               });
             });
           } else {
-            // If a sleep record has no cycles
-            babyDataForCSV.push({
-              date: record.date,
-              cycleNumber: '-', bedtime: '-', timeToSleep: '-',
-              whoPutToSleep: '-', howFellAsleep: '-', wakeTime: '-',
-            });
+            babyDataForCSV.push({ date: record.date, cycleNumber: '-', bedtime: '-', timeToSleep: '-', whoPutToSleep: '-', howFellAsleep: '-', wakeTime: '-' });
           }
         });
       } else {
-        // If baby has no sleep records at all
-        const emptyRow: any = {};
-        Object.keys(csvHeaders).forEach(key => {
-            emptyRow[key] = (key === 'date' ? 'אין נתוני שינה' : '');
-        });
-        babyDataForCSV.push(emptyRow);
+        babyDataForCSV.push({ date: 'אין נתוני שינה', cycleNumber: '', bedtime: '', timeToSleep: '', whoPutToSleep: '', howFellAsleep: '', wakeTime: '' });
       }
       
       const csvString = convertToCSV(babyDataForCSV, csvHeaders);
-      const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); // Added BOM for Excel
+      const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
@@ -223,27 +236,26 @@ export default function CoachDashboardPage() {
       document.body.appendChild(link);
       link.click();
       
-      // Delay removal slightly to ensure download initiation
-      setTimeout(() => {
-        if (link.parentElement) {
-            document.body.removeChild(link);
-        }
-        URL.revokeObjectURL(url);
-      }, 100); 
-    });
+      await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+      if (link.parentElement) document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
 
     toast({ title: 'ייצוא CSV הושלם', description: `${babiesToExport.length} קבצים נוצרו והורדו.`});
+    setIsExporting(false);
+    setIsExportDialogOpen(false);
   };
 
   /**
    * Handles exporting baby data to a PDF file (via browser print).
    * @param {Baby[]} babiesToExport - The list of babies to export.
    */
-  const exportBabiesToPDF = (babiesToExport: Baby[]) => {
+  const exportBabiesToPDF = async (babiesToExport: Baby[]) => {
      if (babiesToExport.length === 0) {
       toast({ title: 'לא נבחרו תינוקות', description: 'יש לבחור לפחות תינוק אחד לייצוא.', variant: 'destructive' });
       return;
     }
+    setIsExporting(true);
 
     let htmlContent = `
       <!DOCTYPE html>
@@ -253,41 +265,13 @@ export default function CoachDashboardPage() {
           <title>נתוני תינוקות - לילה טוב</title>
           <style>
             @media print {
-              body { 
-                font-family: Arial, sans-serif; 
-                direction: rtl;
-                margin: 20px;
-              }
-              .baby-section { 
-                page-break-after: always; 
-                border-bottom: 1px dashed #ccc;
-                padding-bottom: 20px;
-                margin-bottom: 20px;
-              }
-              .baby-section:last-child {
-                page-break-after: auto;
-                border-bottom: none;
-                margin-bottom: 0;
-                padding-bottom: 0;
-              }
-              table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-top: 10px; 
-                margin-bottom: 20px;
-              }
-              th, td { 
-                border: 1px solid black; 
-                padding: 8px; 
-                text-align: right; 
-              }
-              th { 
-                background-color: #f2f2f2; 
-              }
-              h1, h2, h3, h4 { 
-                text-align: right; 
-                color: #333;
-              }
+              body { font-family: Arial, sans-serif; direction: rtl; margin: 20px; }
+              .baby-section { page-break-after: always; border-bottom: 1px dashed #ccc; padding-bottom: 20px; margin-bottom: 20px; }
+              .baby-section:last-child { page-break-after: auto; border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; }
+              th, td { border: 1px solid black; padding: 8px; text-align: right; }
+              th { background-color: #f2f2f2; }
+              h1, h2, h3, h4 { text-align: right; color: #333; }
               h1 { font-size: 22px; margin-bottom: 5px;}
               h2 { font-size: 18px; margin-bottom: 3px; color: #555;}
               h3 { font-size: 16px; margin-bottom: 3px; color: #555;}
@@ -300,7 +284,7 @@ export default function CoachDashboardPage() {
         <body>
     `;
 
-    babiesToExport.forEach(baby => {
+    for (const baby of babiesToExport) {
       htmlContent += `
         <div class="baby-section">
           <h1>תינוק: ${escapeHtml(baby.name)} ${escapeHtml(baby.familyName)}</h1>
@@ -309,35 +293,21 @@ export default function CoachDashboardPage() {
           ${baby.description ? `<p><strong>תיאור:</strong> ${escapeHtml(baby.description)}</p>` : ''}
           ${baby.coachNotes ? `<p><strong>הערות היועצת:</strong> ${escapeHtml(baby.coachNotes)}</p>` : ''}
       `;
+      
+      const sleepRecords = baby.sleepRecords || await getSleepRecordsForBabyFromFirestore(baby.id);
 
-      if (baby.sleepRecords && baby.sleepRecords.length > 0) {
-        baby.sleepRecords.forEach(record => {
+      if (sleepRecords && sleepRecords.length > 0) {
+        sleepRecords.forEach(record => {
           htmlContent += `<h4>רשומת שינה: ${escapeHtml(format(new Date(record.date), "PPP", { locale: he }))}</h4>`;
           if (record.sleepCycles && record.sleepCycles.length > 0) {
             htmlContent += `
               <table>
-                <thead>
-                  <tr>
-                    <th>מחזור</th>
-                    <th>שעת השכבה</th>
-                    <th>זמן להירדם</th>
-                    <th>מי הרדים/ה</th>
-                    <th>איך נרדמ/ה</th>
-                    <th>שעת יקיצה</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>מחזור</th><th>שעת השכבה</th><th>זמן להירדם</th><th>מי הרדים/ה</th><th>איך נרדמ/ה</th><th>שעת יקיצה</th></tr></thead>
                 <tbody>
             `;
             record.sleepCycles.forEach((cycle, index) => {
               htmlContent += `
-                <tr>
-                  <td>${index + 1}</td>
-                  <td>${escapeHtml(cycle.bedtime)}</td>
-                  <td>${escapeHtml(cycle.timeToSleep)}</td>
-                  <td>${escapeHtml(cycle.whoPutToSleep)}</td>
-                  <td>${escapeHtml(cycle.howFellAsleep)}</td>
-                  <td>${escapeHtml(cycle.wakeTime) || '-'}</td>
-                </tr>
+                <tr><td>${index + 1}</td><td>${escapeHtml(cycle.bedtime)}</td><td>${escapeHtml(cycle.timeToSleep)}</td><td>${escapeHtml(cycle.whoPutToSleep)}</td><td>${escapeHtml(cycle.howFellAsleep)}</td><td>${escapeHtml(cycle.wakeTime) || '-'}</td></tr>
               `;
             });
             htmlContent += `</tbody></table>`;
@@ -348,50 +318,39 @@ export default function CoachDashboardPage() {
       } else {
         htmlContent += `<p class="no-records">אין נתוני שינה זמינים לתינוק זה.</p>`;
       }
-      htmlContent += `</div>`; // End of .baby-section
-    });
+      htmlContent += `</div>`;
+    }
 
     htmlContent += `</body></html>`;
 
     const iframe = document.createElement('iframe');
-    // Styles to make it non-intrusive but printable
     iframe.style.position = 'absolute';
     iframe.style.width = '1px';
     iframe.style.height = '1px';
-    iframe.style.left = '-9999px'; // Position off-screen
-    iframe.style.border = 'none'; // No border
-
+    iframe.style.left = '-9999px';
+    iframe.style.border = 'none';
     document.body.appendChild(iframe);
 
-    iframe.srcdoc = htmlContent; // Use srcdoc for security and simplicity
+    iframe.srcdoc = htmlContent;
     iframe.onload = function() {
       try {
         if (iframe.contentWindow) {
-          iframe.contentWindow.focus(); // Focus the iframe's content window
-          iframe.contentWindow.print(); // Trigger print dialog
-        } else {
-          throw new Error("Cannot access iframe content window.");
-        }
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } else { throw new Error("Cannot access iframe content window."); }
       } catch (error) {
         console.error("Error during print:", error);
         toast({ title: 'שגיאה בייצוא PDF', description: 'אירעה שגיאה. נסה שוב.', variant: 'destructive' });
       } finally {
-        // Updated toast message to be more explicit about user action
-        toast({ 
-          title: 'חלון הדפסה מוכן', 
-          description: 'בחר "שמור כ-PDF" בחלון ההדפסה של הדפדפן לשמירת הקובץ.' 
-        });
-        // Delay removal slightly to allow print dialog to fully process
-        setTimeout(() => {
-          if (iframe.parentElement) {
-            document.body.removeChild(iframe);
-          }
-        }, 1000); 
+        toast({ title: 'חלון הדפסה מוכן', description: 'בחר "שמור כ-PDF" בחלון ההדפסה של הדפדפן לשמירת הקובץ.' });
+        setTimeout(() => { if (iframe.parentElement) document.body.removeChild(iframe); }, 1000); 
+        setIsExporting(false);
+        setIsExportDialogOpen(false);
       }
     };
   };
 
-  const handleConfirmExport = () => {
+  const handleConfirmExport = async () => {
     if (selectedBabyIds.length === 0) {
       toast({ title: 'לא נבחרו תינוקות', description: 'אנא בחר לפחות תינוק אחד לייצוא.', variant: 'destructive' });
       return;
@@ -399,21 +358,17 @@ export default function CoachDashboardPage() {
     const babiesToActuallyExport = babies.filter(b => selectedBabyIds.includes(b.id));
 
     if (exportFormat === 'csv') {
-      exportBabiesToCSV(babiesToActuallyExport);
+      await exportBabiesToCSV(babiesToActuallyExport);
     } else if (exportFormat === 'pdf') {
-      exportBabiesToPDF(babiesToActuallyExport);
+      await exportBabiesToPDF(babiesToActuallyExport);
     }
-    setIsExportDialogOpen(false);
   };
 
 
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto">
-        <DashboardHeader 
-          onSearch={handleSearch} 
-          onOpenExportDialog={() => {}} // Placeholder for loading state
-        />
+        <DashboardHeader onSearch={handleSearch} onOpenExportDialog={openExportDialog} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map(i => (
             <div key={i} className="p-4 border rounded-lg shadow">
@@ -432,19 +387,14 @@ export default function CoachDashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <DashboardHeader 
-        onSearch={handleSearch} 
-        onOpenExportDialog={openExportDialog}
-      />
+      <DashboardHeader onSearch={handleSearch} onOpenExportDialog={openExportDialog} />
       <BabyList babies={filteredBabies} />
 
       <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>ייצוא נתוני תינוקות</DialogTitle>
-            <DialogDescription>
-              בחר את התינוקות והפורמט לייצוא.
-            </DialogDescription>
+            <DialogDescription>בחר את התינוקות והפורמט לייצוא.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -454,8 +404,9 @@ export default function CoachDashboardPage() {
                   <div className="flex items-center space-x-2 rtl:space-x-reverse">
                     <Checkbox
                       id="select-all-babies"
-                      checked={selectAllBabies || (selectedBabyIds.length === babies.length && babies.length > 0)}
+                      checked={selectAllBabies}
                       onCheckedChange={(checked) => handleSelectAllChange(Boolean(checked))}
+                      disabled={isExporting}
                     />
                     <Label htmlFor="select-all-babies" className="cursor-pointer">בחר הכל</Label>
                   </div>
@@ -466,6 +417,7 @@ export default function CoachDashboardPage() {
                           id={`baby-export-${baby.id}`}
                           checked={selectedBabyIds.includes(baby.id)}
                           onCheckedChange={(checked) => handleBabySelectionChange(baby.id, Boolean(checked))}
+                          disabled={isExporting}
                         />
                         <Label htmlFor={`baby-export-${baby.id}`} className="cursor-pointer">
                           {baby.name} {baby.familyName}
@@ -484,13 +436,14 @@ export default function CoachDashboardPage() {
                 value={exportFormat}
                 onValueChange={(value: 'csv' | 'pdf') => setExportFormat(value)}
                 className="flex space-x-2 rtl:space-x-reverse"
+                disabled={isExporting}
               >
                 <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                  <RadioGroupItem value="csv" id="format-csv" />
+                  <RadioGroupItem value="csv" id="format-csv" disabled={isExporting}/>
                   <Label htmlFor="format-csv" className="cursor-pointer">CSV</Label>
                 </div>
                 <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                  <RadioGroupItem value="pdf" id="format-pdf" />
+                  <RadioGroupItem value="pdf" id="format-pdf" disabled={isExporting}/>
                   <Label htmlFor="format-pdf" className="cursor-pointer">PDF</Label>
                 </div>
               </RadioGroup>
@@ -498,10 +451,10 @@ export default function CoachDashboardPage() {
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <DialogClose asChild>
-              <Button type="button" variant="outline">ביטול</Button>
+              <Button type="button" variant="outline" disabled={isExporting}>ביטול</Button>
             </DialogClose>
-            <Button type="button" onClick={handleConfirmExport} disabled={selectedBabyIds.length === 0}>
-              ייצא נתונים
+            <Button type="button" onClick={handleConfirmExport} disabled={selectedBabyIds.length === 0 || isExporting}>
+              {isExporting ? "מייצא..." : "ייצא נתונים"}
             </Button>
           </DialogFooter>
         </DialogContent>

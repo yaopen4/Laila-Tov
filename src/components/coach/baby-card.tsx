@@ -2,14 +2,15 @@
 /**
  * @fileoverview Component to display a summary card for a baby on the coach's dashboard.
  * Provides links to view baby's data (parent view) and edit baby's profile.
+ * Data is sourced from Firestore.
  */
 import type { FC } from 'react';
 import Link from 'next/link';
-import type { Baby } from '@/lib/mock-data';
+import type { Baby } from '@/types'; // Use Baby type from central types definition
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { User, Edit3, Eye } from 'lucide-react';
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { he } from 'date-fns/locale';
 
 /**
@@ -27,9 +28,15 @@ interface BabyCardProps {
  */
 const BabyCard: FC<BabyCardProps> = ({ baby }) => {
   // Determine the date of the latest sleep record, or indicate if none exist.
+  // Assumes baby.sleepRecords is sorted with latest first if available from props
   const latestSleepDate = baby.sleepRecords && baby.sleepRecords.length > 0 && baby.sleepRecords[0].date
     ? format(new Date(baby.sleepRecords[0].date), "PPP", { locale: he })
     : "אין נתונים";
+  
+  const lastModifiedDate = baby.lastModified 
+    ? format(parseISO(baby.lastModified), "PPP HH:mm", { locale: he })
+    : "לא זמין";
+
 
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
@@ -48,7 +55,7 @@ const BabyCard: FC<BabyCardProps> = ({ baby }) => {
         <p className="text-sm"><strong className="font-medium">שם האם:</strong> {baby.motherName}</p>
         <p className="text-sm"><strong className="font-medium">שם האב:</strong> {baby.fatherName}</p>
         <p className="text-sm"><strong className="font-medium">עדכון שינה אחרון:</strong> {latestSleepDate}</p>
-        <p className="text-sm"><strong className="font-medium">עודכן לאחרונה:</strong> {format(new Date(baby.lastModified), "PPP HH:mm", { locale: he })}</p>
+        <p className="text-sm"><strong className="font-medium">עודכן לאחרונה:</strong> {lastModifiedDate}</p>
         {baby.description && <p className="text-sm text-muted-foreground pt-2 italic">"{baby.description}"</p>}
       </CardContent>
       <CardFooter className="flex flex-wrap justify-end gap-2 pt-4">

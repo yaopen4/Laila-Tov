@@ -1,14 +1,15 @@
+
 /**
- * @fileoverview Page for editing an existing baby's profile.
+ * @fileoverview Page for editing an existing baby's profile from Firestore.
  * Fetches baby data by ID and uses AddBabyForm in edit mode.
  * Allows archiving the baby from this page.
  */
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AddBabyForm, type BabyFormData } from '@/components/coach/add-baby-form';
-import { getBabyById, updateBaby, type Baby, archiveBaby } from '@/lib/mock-data';
+import { getBabyByIdFromFirestore, updateBabyInFirestore, archiveBabyInFirestore, type Baby } from '@/services/babyService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Archive as ArchiveIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,74 +23,91 @@ export default function EditBabyPage() {
   const babyId = params.babyId as string;
   const [baby, setBaby] = useState<Baby | null | undefined>(undefined); // undefined: loading, null: not found
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+
+  const fetchBabyData = useCallback(async () => {
+    if (babyId) {
+      setIsLoading(true);
+      try {
+        const foundBaby = await getBabyByIdFromFirestore(babyId);
+        setBaby(foundBaby);
+      } catch (error) {
+        console.error("Error fetching baby data:", error);
+        setBaby(null); // Set to null if error occurs
+        toast({
+          title: "שגיאה בטעינת נתונים",
+          description: "לא ניתן היה לטעון את פרטי התינוק.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  }, [babyId, toast]);
 
   // Effect to fetch baby data when babyId changes
   useEffect(() => {
-    if (babyId) {
-      setIsLoading(true);
-      // Simulate API call to fetch baby data
-      setTimeout(() => {
-        const foundBaby = getBabyById(babyId);
-        setBaby(foundBaby);
-        setIsLoading(false);
-      }, 500);
-    }
-  }, [babyId]);
+    fetchBabyData();
+  }, [fetchBabyData]);
 
   /**
    * Handles the submission of the edited baby form.
-   * Updates the baby's data in mock storage.
+   * Updates the baby's data in Firestore.
    * @param {BabyFormData} values - The updated form data.
    * @param {string} [id] - The ID of the baby being edited.
    */
-  const handleEditBabySubmit = (values: BabyFormData, id?: string) => {
+  const handleEditBabySubmit = async (values: BabyFormData, id?: string) => {
     if (!id || !baby) return;
+    setIsSubmitting(true);
     
-    const updatedBabyData: Partial<Baby> = { ...values };
-    const currentBabyData = getBabyById(id); // Re-fetch to ensure we have the most current non-form data
-    if (!currentBabyData) {
-        toast({ title: "שגיאה", description: "לא ניתן למצוא את התינוק לעדכון.", variant: "destructive" });
-        return;
-    }
+    const updatedBabyData: Partial<Omit<Baby, 'id'>> = { ...values };
+    // parentUsername is not editable, so no need to check for uniqueness again.
+    // Ensure parentUsername is stored in lowercase if it were editable
+    // updatedBabyData.parentUsername = values.parentUsername.toLowerCase();
 
-    const success = updateBaby({
-      ...currentBabyData, // Start with all existing data
-      ...updatedBabyData, // Override with form values
-      id, // Ensure ID is correctly passed
-    });
 
-    if (success) {
+    try {
+      await updateBabyInFirestore(id, updatedBabyData);
       toast({
         title: "פרטי תינוק עודכנו!",
         description: `הפרופיל של ${values.name} ${values.familyName} עודכן.`,
       });
       router.push('/coach/dashboard');
-    } else {
+    } catch (error) {
+      console.error("Error updating baby:", error);
       toast({
         title: "שגיאה בעדכון",
         description: "לא ניתן היה לעדכן את פרטי התינוק.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   /**
    * Handles archiving the baby.
    */
-  const handleArchive = () => {
+  const handleArchive = async () => {
     if (!babyId || !baby) return;
-    if (archiveBaby(babyId)) {
+    setIsSubmitting(true);
+    try {
+      await archiveBabyInFirestore(babyId);
       toast({
         title: "תינוק הועבר לארכיון",
         description: `${baby.name} ${baby.familyName} הועבר בהצלחה לארכיון.`
       });
       router.push('/coach/dashboard');
-    } else {
+    } catch (error) {
+      console.error("Error archiving baby:", error);
       toast({
         title: "שגיאה בארכוב",
         description: "לא ניתן היה להעביר את התינוק לארכיון.",
         variant: "destructive"
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -111,14 +129,11 @@ export default function EditBabyPage() {
         <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
         <h1 className="text-2xl font-semibold mb-2">תינוק לא נמצא</h1>
         <p className="text-muted-foreground mb-6">
-          לא הצלחנו למצוא את פרטי התינוק עם המזהה שהתקבל. ייתכן שהוא הועבר לארכיון או נמחק.
+          לא הצלחנו למצוא את פרטי התינוק עם המזהה שהתקבל. ייתכן שהוא נמחק.
         </p>
         <div className="flex justify-center gap-4">
           <Link href="/coach/dashboard" passHref legacyBehavior>
             <Button>חזרה ללוח הבקרה</Button>
-          </Link>
-          <Link href="/coach/archive" passHref legacyBehavior>
-            <Button variant="outline">מעבר לארכיון</Button>
           </Link>
         </div>
       </div>
@@ -153,11 +168,12 @@ export default function EditBabyPage() {
         initialData={baby}
         isEditMode={true}
         onSubmitProp={handleEditBabySubmit}
+        isSubmitting={isSubmitting}
       />
       <div className="mt-8 max-w-2xl mx-auto">
-        <Button variant="outline" onClick={handleArchive} className="w-full md:w-auto">
+        <Button variant="outline" onClick={handleArchive} className="w-full md:w-auto" disabled={isSubmitting}>
           <ArchiveIcon className="me-2 h-4 w-4" />
-          העבר לארכיון
+          {isSubmitting && baby?.id === babyId ? "מעביר לארכיון..." : "העבר לארכיון"}
         </Button>
       </div>
     </div>

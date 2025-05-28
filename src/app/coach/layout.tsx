@@ -2,12 +2,12 @@
 /**
  * @fileoverview Layout for the consultant section of the application.
  * Includes a collapsible sidebar for navigation and implements client-side route protection
- * to ensure only authenticated consultants can access these routes.
+ * to ensure only authenticated consultants can access these routes using Firebase Auth.
  */
 "use client";
 
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -22,23 +22,30 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-import { LogOut, UserPlus, Users, Archive } from 'lucide-react';
+import { LogOut, UserPlus, Users, Archive, FileText, FileSpreadsheet } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { isCoach, logout as authLogout } from '@/lib/auth-service'; // Import auth service
+import { onAuthChange, logout as firebaseLogout, isCoachUser, type AuthUser } from '@/services/authService';
+import { useToast } from '@/hooks/use-toast';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast();
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   // Client-side route protection:
-  // Redirect to login if not authenticated as a coach (consultant).
-  // This runs on component mount and whenever the router object changes.
+  // Redirect to login if not authenticated as a coach.
   useEffect(() => {
-    // Ensure this check runs only in the browser
-    if (typeof window !== 'undefined' && !isCoach()) {
-      router.push('/'); // Redirect to login page
-    }
-  }, [router]); // Dependency array ensures this runs if router instance changes
+    const unsubscribe = onAuthChange((user) => {
+      setCurrentUser(user);
+      setIsLoadingAuth(false);
+      if (!user || !isCoachUser(user)) {
+        router.push('/');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   // Navigation items for the consultant sidebar
   const navItems = [
@@ -51,19 +58,28 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
    * Handles user logout.
    * Clears authentication state and redirects to the login page.
    */
-  const handleLogout = () => {
-    authLogout();
-    router.push('/');
+  const handleLogout = async () => {
+    try {
+      await firebaseLogout();
+      toast({ title: "התנתקת בהצלחה" });
+      router.push('/');
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast({ title: "שגיאה בהתנתקות", variant: "destructive" });
+    }
   };
 
-  // If not a coach (e.g., during initial client-side render before useEffect kicks in,
-  // or if JS is disabled, though less relevant for Next.js apps),
-  // render null or a loading indicator to prevent content flash.
-  // This check relies on localStorage, so it's primarily for client-side rendering.
-  if (typeof window !== 'undefined' && !isCoach()) {
-    return null; // Or a loading spinner, or a "Redirecting..." message
+  if (isLoadingAuth) {
+    // Optional: Render a loading spinner or skeleton UI
+    return <div className="flex justify-center items-center min-h-screen"><p>טוען...</p></div>;
   }
 
+  // If user is null after auth check or not a coach, content will not render due to redirect.
+  // This check can be an additional safeguard or for cases where redirect hasn't completed.
+  if (!currentUser || !isCoachUser(currentUser)) {
+    return null;
+  }
+  
   return (
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon" side="right"> {/* Sidebar positioned on the right for RTL */}
@@ -80,7 +96,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
                 <Link href={item.href} legacyBehavior passHref>
                   <SidebarMenuButton
                     isActive={pathname === item.href}
-                    tooltip={{ children: item.label, side: 'left', align: 'center' }} // Tooltip on the left
+                    tooltip={{ children: item.label, side: 'left', align: 'center' }}
                   >
                     <item.icon className="h-5 w-5" />
                     <span>{item.label}</span>
@@ -94,17 +110,13 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
          <div className="p-2 mt-auto"> {/* Footer section of sidebar */}
             <SidebarMenuButton
               onClick={handleLogout}
-              tooltip={{children: "התנתקות", side: 'left', align: 'center'}} // Tooltip on the left
+              tooltip={{children: "התנתקות", side: 'left', align: 'center'}}
             >
               <LogOut className="h-5 w-5" />
               <span>התנתקות</span>
             </SidebarMenuButton>
         </div>
       </Sidebar>
-      {/*
-        SidebarInset is the main content area.
-        min-w-0 helps flexbox correctly size the content area, especially if content within it resists shrinking.
-      */}
       <SidebarInset className="bg-background p-4 md:p-6 overflow-auto min-w-0">
         {children}
       </SidebarInset>
