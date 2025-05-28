@@ -3,7 +3,7 @@
 
 "Laila Tov" (לילה טוב - Good Night) is a Next.js application designed to help sleep coaches and parents track and manage baby sleep patterns. It provides a dashboard for coaches to manage multiple babies and a separate interface for parents to log sleep data.
 
-**Important Note: This application currently uses in-memory mock data and client-side authentication for demonstration and development purposes only. It does not connect to a persistent database and is not suitable for production environments without significant modifications, including a secure backend, robust authentication, and proper data storage.**
+**Important Note: This application currently uses in-memory mock data and client-side authentication for demonstration and development purposes only. It does not connect to a persistent database and is not suitable for production environments without significant modifications, including a secure backend, robust authentication, and proper data storage. Security measures are basic and client-side.**
 
 ## Key Features
 
@@ -25,7 +25,7 @@
     *   Edit and delete existing sleep records.
 *   **Coach Notes**: Coaches can add recommendations and notes for parents, which are displayed in the parent view.
 *   **User Authentication (Client-Side Mock)**: Simple username-based distinction between "coach" and "parent" roles with client-side route protection.
-*   **Responsive Design**: UI adapts for different screen sizes, including a mobile-friendly sidebar.
+*   **Responsive Design**: UI adapts for different screen sizes, including a mobile-friendly sidebar. The application is built with responsive design principles in mind, often adopting a mobile-first approach for component layouts (e.g., single-column forms on small screens, multi-column on larger).
 
 ## Tech Stack
 
@@ -68,7 +68,16 @@
 
 *   **Authentication & Authorization**: The current system uses client-side `localStorage` to simulate user sessions. This is **not secure** and is only for demonstration. Real-world applications require robust server-side authentication and authorization.
 *   **Data Storage**: All data is stored in-memory within the browser and is lost upon page reload. Sensitive data should never be stored this way in a production application.
-*   **Input Validation**: Basic input validation is performed using Zod on forms, but comprehensive server-side validation would be necessary for a production app.
+*   **Input Validation**: Basic input validation is performed using Zod on forms, but comprehensive server-side validation would be necessary for a production app. The PDF export feature includes basic HTML escaping for data injected into its template.
+
+## Mobile Compatibility
+
+The application is designed to be responsive and mobile-friendly. Key aspects include:
+*   A collapsible sidebar that transitions to an off-canvas menu on mobile devices.
+*   Responsive grid layouts for forms and lists.
+*   Use of Tailwind CSS, which facilitates responsive design.
+
+However, for a production-ready mobile experience, **comprehensive testing on a variety of mobile devices, screen sizes, and operating systems is crucial.** This ensures an optimal user experience, identifies any touch-specific issues, and verifies performance on mobile networks.
 
 ## Future Enhancements & Considerations
 
@@ -76,9 +85,8 @@ While this application provides a solid foundation, areas for future engineering
 *   **Secure Backend & Database**: Implementing a proper backend service with a persistent, secure database.
 *   **Robust Server-Side Authentication**: Moving beyond client-side mock authentication.
 *   **Comprehensive Automated Testing**: Implementing unit, integration, and end-to-end tests.
-*   **Advanced Performance Optimization**: Deeper analysis and optimization as the application scales.
+*   **Advanced Performance Optimization**: Deeper analysis and optimization as the application scales, especially for mobile.
 *   **Centralized Logging**: Implementing a more formal logging solution for production environments.
 *   **Accessibility (A11y) Audit**: Ensuring all components and interactions are fully accessible.
 
 This project was bootstrapped for Firebase Studio.
-
