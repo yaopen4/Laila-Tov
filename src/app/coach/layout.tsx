@@ -20,7 +20,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-import { LogOut, UserPlus, Users, Archive, FileSpreadsheet, FileText } from 'lucide-react';
+import { LogOut, UserPlus, Users, Archive } from 'lucide-react'; // Removed FileSpreadsheet, FileText as they are not used here directly
 import { Separator } from '@/components/ui/separator';
 import { isCoach, logout as authLogout } from '@/lib/auth-service'; // Import auth service
 
@@ -50,9 +50,8 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen>
-      <Sidebar collapsible="icon">
+      <Sidebar collapsible="icon" side="right"> {/* Changed side to "right" */}
         <SidebarHeader>
-          {/* Removed p-2 from this div as SidebarHeader already has padding */}
           <div className="flex items-center justify-between"> 
              <AppLogo className="text-2xl group-data-[collapsible=icon]:hidden" />
              <SidebarTrigger />
@@ -65,7 +64,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
                 <Link href={item.href} legacyBehavior passHref>
                   <SidebarMenuButton
                     isActive={pathname === item.href}
-                    tooltip={{ children: item.label, side: 'right', align: 'center' }}
+                    tooltip={{ children: item.label, side: 'left', align: 'center' }} // Changed tooltip side to "left"
                   >
                     <item.icon className="h-5 w-5" />
                     <span>{item.label}</span>
@@ -79,7 +78,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
          <div className="p-2 mt-auto"> {/* Footer section of sidebar */}
             <SidebarMenuButton 
               onClick={handleLogout} 
-              tooltip={{children: "התנתקות", side: 'right', align: 'center'}}
+              tooltip={{children: "התנתקות", side: 'left', align: 'center'}} // Changed tooltip side to "left"
             >
               <LogOut className="h-5 w-5" />
               <span>התנתקות</span>
