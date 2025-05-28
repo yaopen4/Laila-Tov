@@ -39,7 +39,7 @@ const sleepCycleSchema = z.object({
   howFellAsleep: z.string().min(1, { message: "שדה חובה." }),
   wakeTime: z.string()
     .optional()
-    .refine(val => val === undefined || val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), {
+    .refine(val => val === undefined || val === '' || /^([01]\d|2[0-3]):([0-5]\d)$/.test(val || ''), {
       message: "פורמט שעה לא תקין (HH:MM), או השאר ריק."
     }),
 });
@@ -237,8 +237,8 @@ export function SleepDataForm({
               <h3 className="text-lg font-medium border-b pb-2">מחזורי שינה</h3>
               {fields.map((item, index) => (
                 <Card key={item.id} className="bg-background shadow-md">
-                  <CardHeader className="p-4 flex items-center justify-between border-b">
-                     <CardTitle className="text-md">מחזור שינה {index + 1}</CardTitle>
+                  <div className="flex items-center justify-between p-4 border-b">
+                     <h4 className="text-md font-semibold">מחזור שינה {index + 1}</h4>
                      {fields.length > 1 && (
                         <Button
                           type="button"
@@ -251,7 +251,7 @@ export function SleepDataForm({
                           <Trash2 className="h-4 w-4" />
                         </Button>
                      )}
-                  </CardHeader>
+                  </div>
                   <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <FormField
                       control={form.control}
