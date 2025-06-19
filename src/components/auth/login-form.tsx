@@ -8,11 +8,12 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card"; // Removed CardTitle
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
-import { LogIn, UserPlus, Users, Briefcase } from 'lucide-react'; // Added Briefcase for coach icon
+import { LogIn, UserPlus, Users, Briefcase } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator"; // Added Separator
 import {
   Dialog,
   DialogContent,
@@ -42,7 +43,7 @@ const getRedirectPath = (user: AuthUser): string => {
 
 
 const LoginForm: FC = () => {
-  const [activeTab, setActiveTab] = useState("login");
+  const [activeTab, setActiveTab] = useState("login"); // Default to "login" (which becomes "מדריכת שינה")
 
   // Login state
   const [loginEmail, setLoginEmail] = useState('');
@@ -52,7 +53,6 @@ const LoginForm: FC = () => {
   const [inviteCode, setInviteCode] = useState('');
   const [parentEmailForInvite, setParentEmailForInvite] = useState('');
   const [parentPasswordForInvite, setParentPasswordForInvite] = useState('');
-  // Removed parentNameForInvite and parentConfirmPasswordForInvite states
 
 
   // Coach Registration state
@@ -126,7 +126,6 @@ const LoginForm: FC = () => {
 
   const handleParentSignUpWithInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Removed password confirmation check
     if (parentPasswordForInvite.length < 6) {
         toast({ title: "שגיאה", description: "סיסמה חייבת להכיל לפחות 6 תווים.", variant: "destructive" });
         return;
@@ -159,13 +158,12 @@ const LoginForm: FC = () => {
          return;
       }
 
-      // Derive name from email for registration
       const parentNameFromEmail = parentEmailForInvite.split('@')[0] || "Parent";
 
       const authUser = await registerWithEmail(
         normalizedParentEmail,
         parentPasswordForInvite,
-        parentNameFromEmail, // Use derived name
+        parentNameFromEmail, 
         'parent',
         'active',
         invite
@@ -257,17 +255,19 @@ const LoginForm: FC = () => {
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-br from-background to-accent/10">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center pb-4">
-          <div className="mx-auto mb-4">
+          <div className="mx-auto mb-2"> {/* Reduced margin bottom */}
             <AppLogo className="text-5xl" />
           </div>
-           <CardTitle className="text-3xl font-bold">לילה טוב</CardTitle>
-           <CardDescription>מערכת מעקב שינה לתינוקות</CardDescription>
+           <CardDescription className="text-sm text-muted-foreground">מערכת מעקב שינה לתינוקות</CardDescription>
         </CardHeader>
         <CardContent>
+          <Separator className="my-4" /> {/* Added separator */}
+          <h3 className="text-lg font-semibold text-center mb-4">התחבר בתור</h3> {/* Added H3 header */}
+          
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">התחברות</TabsTrigger>
-              <TabsTrigger value="parent-code">הורה עם קוד</TabsTrigger>
+              <TabsTrigger value="login">מדריכת שינה</TabsTrigger> {/* Changed text, "login" is default */}
+              <TabsTrigger value="parent-code">הורה</TabsTrigger> {/* Changed text */}
             </TabsList>
             
             <TabsContent value="login" className="pt-6">
@@ -305,7 +305,6 @@ const LoginForm: FC = () => {
 
             <TabsContent value="parent-code" className="pt-6">
               <form onSubmit={handleParentSignUpWithInvite} className="space-y-6">
-                 {/* Removed Parent Name Field */}
                 <div className="space-y-2">
                   <Label htmlFor="parent-email-invite">אימייל (של ההורה)</Label>
                   <Input
@@ -339,7 +338,6 @@ const LoginForm: FC = () => {
                     required
                   />
                 </div>
-                {/* Removed Confirm Password Field */}
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "מעבד..." : "המשך עם קוד"}
                   {!isLoading && <UserPlus className="ms-2 h-4 w-4" />}
@@ -435,3 +433,4 @@ const LoginForm: FC = () => {
 };
 
 export default LoginForm;
+
