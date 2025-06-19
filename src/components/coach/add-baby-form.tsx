@@ -22,12 +22,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, Edit3, MessageSquareText } from "lucide-react";
+import { UserPlus, Edit3, MessageSquareText, Mail } from "lucide-react";
 import type { Baby } from "@/types"; // Using Baby type for initialData
 import { useEffect } from "react";
 
 // Zod schema for form validation. Defines the structure and validation rules for baby data.
-const formSchema = z.object({
+// This schema is for the form itself, which now includes parent emails for invite creation.
+const addBabyAndInviteFormSchema = z.object({
   name: z.string().min(2, { message: "שם פרטי חייב להכיל לפחות 2 תווים." }).max(50, { message: "שם פרטי ארוך מדי." }),
   familyName: z.string().min(2, { message: "שם משפחה חייב להכיל לפחות 2 תווים." }).max(50, { message: "שם משפחה ארוך מדי." }),
   age: z.coerce.number().min(0, { message: "גיל חייב להיות מספר חיובי." }).max(36, { message: "גיל מקסימלי 36 חודשים."}),
@@ -40,23 +41,32 @@ const formSchema = z.object({
                       .max(30, { message: "שם משתמש ארוך מדי."})
                       .regex(/^[a-zA-Z0-9_-]+$/, { message: "שם משתמש יכול להכיל אותיות באנגלית, מספרים, קו תחתון ומקף בלבד." }),
   coachNotes: z.string().max(1000, { message: "הערות יועצת ארוכות מדי." }).optional(),
+  parentEmail1: z.string().email({ message: "כתובת אימייל לא תקינה עבור הורה 1." }),
+  parentEmail2: z.string().email({ message: "כתובת אימייל לא תקינה עבור הורה 2." }),
+}).refine(data => data.parentEmail1.toLowerCase() !== data.parentEmail2.toLowerCase(), {
+  message: "כתובות האימייל של ההורים חייבות להיות שונות.",
+  path: ["parentEmail2"], // Attach error to the second email field
 });
 
+
 /**
- * Type definition for the baby form data, inferred from the Zod schema.
+ * Type definition for the extended form data, including parent emails.
+ * This is specific to this form's needs. The BabyFormData type from src/types/index.ts
+ * remains for the baby-specific data part.
  */
-export type BabyFormData = z.infer<typeof formSchema>;
+export type AddBabyAndInviteFormData = z.infer<typeof addBabyAndInviteFormSchema>;
+
 
 /**
  * Props for the AddBabyForm component.
  */
 interface AddBabyFormProps {
   /** Initial data to pre-fill the form, used in edit mode. Can be null if data is still loading. */
-  initialData?: Partial<Baby> | null;
+  initialData?: Partial<Baby & { parentEmail1?: string; parentEmail2?: string }> | null; // Edit mode won't typically have parent emails in this form anymore
   /** Flag to indicate if the form is in edit mode (true) or add mode (false). Defaults to false. */
   isEditMode?: boolean;
   /** Callback function to handle form submission. Passes form values and an optional ID (for updates). */
-  onSubmitProp: (values: BabyFormData, id?: string) => Promise<void>;
+  onSubmitProp: (values: AddBabyAndInviteFormData, id?: string) => Promise<void>;
   /** Flag to indicate if the form is currently submitting. */
   isSubmitting?: boolean;
 }
@@ -66,9 +76,9 @@ interface AddBabyFormProps {
  * @param {AddBabyFormProps} props - The component's props.
  */
 export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isSubmitting = false }: AddBabyFormProps) {
-  const form = useForm<BabyFormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: { 
+  const form = useForm<AddBabyAndInviteFormData>({
+    resolver: zodResolver(addBabyAndInviteFormSchema),
+    defaultValues: {
       name: "",
       familyName: "",
       age: 0,
@@ -79,6 +89,8 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
       description: "",
       parentUsername: "",
       coachNotes: "",
+      parentEmail1: "",
+      parentEmail2: "",
     },
   });
 
@@ -87,7 +99,7 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
    * This ensures the form is correctly pre-filled or cleared.
    */
   useEffect(() => {
-    if (initialData) { 
+    if (initialData) {
       form.reset({
         name: initialData.name || "",
         familyName: initialData.familyName || "",
@@ -99,12 +111,16 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
         description: initialData.description || "",
         parentUsername: initialData.parentUsername || "",
         coachNotes: initialData.coachNotes || "",
+        // Parent emails typically not part of initialData for edit mode of baby details
+        // but handled here if they were passed for some reason in a different context
+        parentEmail1: initialData.parentEmail1 || "",
+        parentEmail2: initialData.parentEmail2 || "",
       });
-    } else if (!isEditMode) { 
+    } else if (!isEditMode) {
         form.reset({
             name: "", familyName: "", age: 0, motherName: "", fatherName: "",
             siblingsCount: 0, siblingsNames: "", description: "", parentUsername: "",
-            coachNotes: ""
+            coachNotes: "", parentEmail1: "", parentEmail2: ""
         });
     }
   }, [initialData, form, isEditMode]);
@@ -112,25 +128,34 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
   /**
    * Handles the actual form submission after validation.
    * Calls the `onSubmitProp` callback with the form values and the baby's ID (if editing).
-   * @param {BabyFormData} values - The validated form data.
+   * @param {AddBabyAndInviteFormData} values - The validated form data.
    */
-  async function onSubmit(values: BabyFormData) {
-    // Parent username is converted to lowercase before sending to onSubmitProp
-    // The actual saving to Firestore should handle this if needed, but good to be consistent.
+  async function onSubmit(values: AddBabyAndInviteFormData) {
     await onSubmitProp({ ...values, parentUsername: values.parentUsername.toLowerCase() }, initialData?.id);
   }
+
+  const formTitle = isEditMode ? `עריכת פרטי ${initialData?.name || 'תינוק'}` : "יצירת הזמנה להורים";
+  const submitButtonText = isEditMode ? "עדכן פרטי תינוק" : "צור הזמנה ושלח קוד";
+
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-2xl flex items-center gap-2">
           {isEditMode ? <Edit3 className="h-6 w-6 text-primary" /> : <UserPlus className="h-6 w-6 text-primary" />}
-          {isEditMode ? `עריכת פרטי ${initialData?.name || 'תינוק'}` : "הוספת תינוק חדש"}
+          {formTitle}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <p className="text-sm text-muted-foreground">
+              {isEditMode
+                ? "עדכן את פרטי התינוק. שדות כמו שם משתמש הורים ואימיילים אינם ניתנים לשינוי לאחר יצירת ההזמנה הראשונית."
+                : "מלא את פרטי התינוק ואת כתובות האימייל של ההורים כדי ליצור קוד הזמנה ייחודי. ההורים ישתמשו בקוד זה ובאימייל שלהם כדי להירשם."
+              }
+            </p>
+            <h3 className="text-lg font-semibold border-b pb-2 pt-2">פרטי התינוק/ת</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
@@ -176,10 +201,13 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                 name="parentUsername"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>שם משתמש להורים</FormLabel>
+                    <FormLabel>כינוי לתינוק (לקישור הורים)</FormLabel>
                     <FormControl>
-                      <Input placeholder="baby-family" {...field} disabled={isEditMode || isSubmitting} />
+                      <Input placeholder="לדוגמא: cohen-baby (באנגלית)" {...field} disabled={isEditMode || isSubmitting} />
                     </FormControl>
+                     <FormDescription>
+                      ישמש כמזהה ייחודי. לא ניתן לשינוי לאחר היצירה.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -250,6 +278,39 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                 </FormItem>
               )}
             />
+            {!isEditMode && (
+              <>
+                <h3 className="text-lg font-semibold border-b pb-2 pt-4">פרטי הורים להזמנה</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="parentEmail1"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-1"><Mail className="h-4 w-4" />אימייל הורה 1</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="parent1@example.com" {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="parentEmail2"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-1"><Mail className="h-4 w-4" />אימייל הורה 2</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="parent2@example.com" {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </>
+            )}
             <FormField
               control={form.control}
               name="coachNotes"
@@ -257,7 +318,7 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                 <FormItem>
                   <FormLabel className="flex items-center gap-1">
                     <MessageSquareText className="h-4 w-4" />
-                    הערות יועצת (אופציונלי)
+                    הערות יועצת (יוצגו להורים)
                   </FormLabel>
                   <FormControl>
                     <Textarea
@@ -268,14 +329,14 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                     />
                   </FormControl>
                   <FormDescription>
-                    הערות אלו יוצגו להורים בממשק שלהם.
+                    הערות אלו יוצגו להורים בממשק שלהם לאחר שימוש בקוד ההזמנה.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting}>
-              {isSubmitting ? (isEditMode ? "מעדכן..." : "מוסיף...") : (isEditMode ? "עדכן פרטי תינוק" : "הוסף תינוק")}
+              {isSubmitting ? (isEditMode ? "מעדכן..." : "יוצר הזמנה...") : submitButtonText}
             </Button>
           </form>
         </Form>
@@ -283,3 +344,4 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
     </Card>
   );
 }
+
