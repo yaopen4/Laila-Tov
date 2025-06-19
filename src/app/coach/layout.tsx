@@ -24,7 +24,7 @@ import {
 import AppLogo from "@/components/shared/app-logo";
 import { LogOut, UserPlus, Users, Archive, FileText, FileSpreadsheet } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { onAuthChange, logout as firebaseLogout, isCoachUser, type AuthUser } from '@/services/authService';
+import { onAuthChange, signOut as firebaseLogout, isCoachUser, type AuthUser } from '@/services/authService';
 import { useToast } from '@/hooks/use-toast';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
