@@ -52,8 +52,7 @@ const LoginForm: FC = () => {
   const [inviteCode, setInviteCode] = useState('');
   const [parentEmailForInvite, setParentEmailForInvite] = useState('');
   const [parentPasswordForInvite, setParentPasswordForInvite] = useState('');
-  const [parentConfirmPasswordForInvite, setParentConfirmPasswordForInvite] = useState('');
-  const [parentNameForInvite, setParentNameForInvite] = useState('');
+  // Removed parentNameForInvite and parentConfirmPasswordForInvite states
 
 
   // Coach Registration state
@@ -91,7 +90,6 @@ const LoginForm: FC = () => {
         return;
       }
       
-      // Check coach status before redirecting
       if (loggedInUser.role === 'coach' && loggedInUser.status !== 'active') {
         toast({
           title: "חשבון ממתין",
@@ -128,10 +126,7 @@ const LoginForm: FC = () => {
 
   const handleParentSignUpWithInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (parentPasswordForInvite !== parentConfirmPasswordForInvite) {
-      toast({ title: "שגיאה", description: "הסיסמאות אינן תואמות.", variant: "destructive" });
-      return;
-    }
+    // Removed password confirmation check
     if (parentPasswordForInvite.length < 6) {
         toast({ title: "שגיאה", description: "סיסמה חייבת להכיל לפחות 6 תווים.", variant: "destructive" });
         return;
@@ -164,10 +159,13 @@ const LoginForm: FC = () => {
          return;
       }
 
+      // Derive name from email for registration
+      const parentNameFromEmail = parentEmailForInvite.split('@')[0] || "Parent";
+
       const authUser = await registerWithEmail(
         normalizedParentEmail,
         parentPasswordForInvite,
-        parentNameForInvite,
+        parentNameFromEmail, // Use derived name
         'parent',
         'active',
         invite
@@ -175,10 +173,10 @@ const LoginForm: FC = () => {
 
       await redeemInvitePartially(invite.id, authUser.uid, normalizedParentEmail);
 
-      toast({ title: "רישום הורים הושלם!", description: `ברוך הבא, ${parentNameForInvite}! התינוק ${invite.babyData.name} קושר לחשבונך.` });
+      toast({ title: "רישום הורים הושלם!", description: `ברוך הבא, ${parentNameFromEmail}! התינוק ${invite.babyData.name} קושר לחשבונך.` });
       router.push(getRedirectPath(authUser));
 
-    } catch (error: any) { // Added missing opening brace for catch block
+    } catch (error: any) {
       console.error("Parent sign up error:", error);
       let message = "אירעה שגיאה ברישום. נסה שוב.";
       if (error.code === 'auth/email-already-in-use') {
@@ -229,11 +227,11 @@ const LoginForm: FC = () => {
 
 
       toast({ title: "רישום יועצת הצליח!", description: `ברוכה הבאה, ${coachName}! חשבונך נוצר וממתין לאישור מנהל.` });
-      setIsCoachRegistrationDialogOpen(false); // Close dialog on success
+      setIsCoachRegistrationDialogOpen(false); 
       setActiveTab("login"); 
       setLoginEmail(normalizedCoachEmail); 
       setLoginPassword('');
-      // Clear coach form fields
+      
       setCoachName('');
       setCoachEmail('');
       setCoachPassword('');
@@ -267,9 +265,9 @@ const LoginForm: FC = () => {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2"> {/* Changed to grid-cols-2 */}
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">התחברות</TabsTrigger>
-              <TabsTrigger value="parent-signup">הורה (קוד הזמנה)</TabsTrigger>
+              <TabsTrigger value="parent-code">הורה עם קוד</TabsTrigger>
             </TabsList>
             
             <TabsContent value="login" className="pt-6">
@@ -305,19 +303,9 @@ const LoginForm: FC = () => {
               </form>
             </TabsContent>
 
-            <TabsContent value="parent-signup" className="pt-6">
+            <TabsContent value="parent-code" className="pt-6">
               <form onSubmit={handleParentSignUpWithInvite} className="space-y-6">
-                 <div className="space-y-2">
-                  <Label htmlFor="parent-name-invite">שם מלא (של ההורה)</Label>
-                  <Input
-                    id="parent-name-invite"
-                    type="text"
-                    placeholder="שם פרטי ומשפחה"
-                    value={parentNameForInvite}
-                    onChange={(e) => setParentNameForInvite(e.target.value)}
-                    required
-                  />
-                </div>
+                 {/* Removed Parent Name Field */}
                 <div className="space-y-2">
                   <Label htmlFor="parent-email-invite">אימייל (של ההורה)</Label>
                   <Input
@@ -351,19 +339,9 @@ const LoginForm: FC = () => {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="parent-confirm-password-invite">אימות סיסמה</Label>
-                  <Input
-                    id="parent-confirm-password-invite"
-                    type="password"
-                    placeholder="הקלד/י סיסמה שוב"
-                    value={parentConfirmPasswordForInvite}
-                    onChange={(e) => setParentConfirmPasswordForInvite(e.target.value)}
-                    required
-                  />
-                </div>
+                {/* Removed Confirm Password Field */}
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "רושם..." : "הירשם כהורה"}
+                  {isLoading ? "מעבד..." : "המשך עם קוד"}
                   {!isLoading && <UserPlus className="ms-2 h-4 w-4" />}
                 </Button>
               </form>
@@ -457,5 +435,3 @@ const LoginForm: FC = () => {
 };
 
 export default LoginForm;
-
-    
