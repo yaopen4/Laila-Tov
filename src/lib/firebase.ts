@@ -11,7 +11,7 @@ const firebaseConfig = {
   projectId: "laila-tov",
   storageBucket: "laila-tov.firebasestorage.app",
   messagingSenderId: "948624363951",
-  appId: "1:948624363951:web:192e2b140266f3705b5f5a"
+  appId: "1:948624363951:web:4ebb4d39ffebf8315b5f5a" // Updated to match build log
 };
 
 // --- BEGIN Explicit Pre-checks ---
@@ -68,3 +68,4 @@ try {
 }
 
 export { app, auth, db };
+
