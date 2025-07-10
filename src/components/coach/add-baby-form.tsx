@@ -316,9 +316,6 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                       disabled={isSubmitting}
                     />
                   </FormControl>
-                  <FormDescription>
-                    הערות אלו יוצגו להורים בממשק שלהם לאחר שימוש בקוד ההזמנה.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
