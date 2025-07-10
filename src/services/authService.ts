@@ -7,9 +7,10 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut, // Renamed to avoid conflict
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, Timestamp, type FieldValue } from 'firebase/firestore';
 import { auth as firebaseAuthInstance, db } from '@/lib/firebase';
 import type { Invite } from '@/types';
+import { createCoachProfile } from '@/services/coachService';
 
 const COACH_EMAIL_IDENTIFIER = 'coach@lailatov.app'; // Used in older direct login
 const ADMIN_EMAIL_IDENTIFIER = 'admin@lailatov.app'; // Example admin email for direct login differentiation
@@ -129,6 +130,11 @@ export const registerWithEmail = async (
   }
 
   const finalUserDoc = await upsertUserDocument(firebaseUser, userDocData);
+  
+  // If it's a coach, also create their specific profile
+  if (role === 'coach') {
+    await createCoachProfile(finalUserDoc.uid, finalUserDoc.email, finalUserDoc.name || '', status);
+  }
 
   return {
     ...firebaseUser,
@@ -166,12 +172,7 @@ export const loginWithEmail = async (email: string, password: string): Promise<A
     // For now, let's try to proceed but log verbosely.
     // If this happens, admin redirection will fail.
     // This is where the "Missing or insufficient permissions" for reading /users/{uid} would manifest.
-    return {
-        ...firebaseUser,
-        role: undefined, // Indicate role is unknown
-        status: undefined,
-        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-      };
+    throw new Error("User document or role not found. Please contact support.");
   }
   
   let parentUsernameForRouting: string | undefined = undefined;
@@ -344,7 +345,7 @@ export const isParentUser = (user: AuthUser | null, expectedBabyIdForParentPage?
  * This is intended for admin use.
  * @returns {Promise<UserDoc[]>} An array of coach user documents.
  */
-import { collection, query, where, getDocs, type FieldValue } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export const getAllCoachUsers = async (): Promise<UserDoc[]> => {
   const usersRef = collection(db, 'users');
