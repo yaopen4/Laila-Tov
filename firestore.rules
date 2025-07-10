@@ -1,107 +1,63 @@
 
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check user role
-    // Returns the user's role string if the user document and role field exist, otherwise null.
+    // Helper function to check if a user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to get user's role from the 'users' collection
     function getUserRole(userId) {
-      return exists(/databases/$(database)/documents/users/$(userId)) &&
-             (get(/databases/$(database)/documents/users/$(userId)).data.role != null)
-               ? get(/databases/$(database)/documents/users/$(userId)).data.role
-               : null;
+      return get(/databases/$(database)/documents/users/$(userId)).data.role;
     }
-
-    // Users Collection
+    
+    // USERS collection: Users can read/update their own document.
     match /users/{userId} {
-      allow read: if request.auth != null && (
-                    request.auth.uid == userId ||
-                    getUserRole(request.auth.uid) == 'admin' ||
-                    (
-                      getUserRole(request.auth.uid) == 'coach' &&
-                      resource.data.containsKey('coachId') && // Check if coachId field exists
-                      resource.data.coachId == request.auth.uid
-                    )
-                  );
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && (
-                      request.auth.uid == userId ||
-                      getUserRole(request.auth.uid) == 'admin'
-                    );
-      allow delete: if request.auth != null && getUserRole(request.auth.uid) == 'admin';
+      allow read, update: if isAuthenticated() && request.auth.uid == userId;
+      // Anyone can create their own user document during sign-up
+      allow create: if isAuthenticated(); 
     }
 
-    // Coaches Collection
+    // COACHES collection: Only authenticated users (admins) can manage these.
+    // For now, let's allow any authenticated user to read for simplicity.
     match /coaches/{coachId} {
-      allow read: if request.auth != null && (
-                    request.auth.uid == coachId ||
-                    getUserRole(request.auth.uid) == 'admin'
-                  );
-      allow create: if request.auth != null &&
-                       request.auth.uid == coachId &&
-                       getUserRole(request.auth.uid) == 'coach';
-      allow update: if request.auth != null && (
-                      request.auth.uid == coachId ||
-                      getUserRole(request.auth.uid) == 'admin'
-                    );
-      allow delete: if request.auth != null && getUserRole(request.auth.uid) == 'admin';
+        allow read: if isAuthenticated();
+        // In production, write access should be limited to admins
+        allow write: if isAuthenticated() && getUserRole(request.auth.uid) == 'admin';
     }
 
-    // Invites Collection
-    match /invites/{inviteCode} {
-      allow read: if request.auth != null && (
-                    resource.data.coachId == request.auth.uid ||
-                    (resource.data.parentEmails != null && request.auth.token.email in resource.data.parentEmails) ||
-                    getUserRole(request.auth.uid) == 'admin'
-                  );
-      allow create: if request.auth != null &&
-                       request.resource.data.coachId == request.auth.uid &&
-                       getUserRole(request.auth.uid) == 'coach';
-      allow update: if request.auth != null && (
-                      (resource.data.coachId == request.auth.uid && getUserRole(request.auth.uid) == 'coach') ||
-                      (
-                        resource.data.parentEmails != null && request.auth.token.email in resource.data.parentEmails &&
-                        (
-                          request.resource.data.status != resource.data.status ||
-                          (request.resource.data.usedBy != null && request.auth.uid in request.resource.data.usedBy)
-                        )
-                      ) ||
-                      getUserRole(request.auth.uid) == 'admin'
-                    );
-      allow delete: if request.auth != null && getUserRole(request.auth.uid) == 'admin';
+    // INVITES collection:
+    // Users need to read an invite before they are authenticated.
+    // Once authenticated, they need to write to it to redeem it.
+    match /invites/{inviteId} {
+      allow read: if true; // Allow reading invites to check them
+      allow update: if isAuthenticated(); // Allow authenticated users to redeem
+      // Creating invites should be limited to coaches
+      allow create: if isAuthenticated() && getUserRole(request.auth.uid) == 'coach';
     }
 
-    // Babies Collection
+    // BABIES collection and SLEEPRECORDS subcollection
     match /babies/{babyId} {
-      allow read: if request.auth != null && (
-                    (resource.data.parentIds != null && request.auth.uid in resource.data.parentIds) ||
-                    resource.data.coachId == request.auth.uid ||
-                    getUserRole(request.auth.uid) == 'admin'
-                  );
-      allow create: if request.auth != null && (
-                      (request.resource.data.coachId == request.auth.uid && getUserRole(request.auth.uid) == 'coach') ||
-                      (request.resource.data.parentIds != null && request.auth.uid in request.resource.data.parentIds) ||
-                      getUserRole(request.auth.uid) == 'admin'
-                    );
-      allow update: if request.auth != null && (
-                      (resource.data.parentIds != null && request.auth.uid in resource.data.parentIds) ||
-                      resource.data.coachId == request.auth.uid ||
-                      getUserRole(request.auth.uid) == 'admin'
-                    );
-      allow delete: if request.auth != null && (
-                      resource.data.coachId == request.auth.uid ||
-                      getUserRole(request.auth.uid) == 'admin'
-                    );
+      // Allow read if user is the assigned coach OR one of the linked parents.
+      allow read: if isAuthenticated() && 
+                    (resource.data.coachId == request.auth.uid || request.auth.uid in resource.data.parentIds);
+      
+      // Allow update if user is the assigned coach.
+      allow update: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+      
+      // A baby document can only be created by a coach.
+      allow create: if isAuthenticated() && getUserRole(request.auth.uid) == 'coach';
+      
+      allow delete: if isAuthenticated() && resource.data.coachId == request.auth.uid;
 
-      // SleepRecords Subcollection
+      // SLEEPRECORDS subcollection
       match /sleepRecords/{recordId} {
-        allow read, write: if request.auth != null && (
-                              (get(/databases/$(database)/documents/babies/$(babyId)).data.parentIds != null &&
-                               request.auth.uid in get(/databases/$(database)/documents/babies/$(babyId)).data.parentIds) ||
-                              get(/databases/$(database)/documents/babies/$(babyId)).data.coachId == request.auth.uid ||
-                              getUserRole(request.auth.uid) == 'admin'
-                            );
+        // Allow read/write if user is the coach or a linked parent.
+        allow read, write: if isAuthenticated() &&
+                            (get(/databases/$(database)/documents/babies/$(babyId)).data.coachId == request.auth.uid ||
+                                request.auth.uid in get(/databases/$(database)/documents/babies/$(babyId)).data.parentIds);
       }
     }
   }

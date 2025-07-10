@@ -66,7 +66,6 @@ export const upsertUserDocument = async (
     return newUserDocData;
   } else {
     // Existing user, update (e.g., last login, or if role needs to be synced from a trusted source)
-    // For login, we generally don't want to override existing role unless explicitly intended
     const existingData = userSnap.data() as UserDoc;
     const dataToSet: Partial<UserDoc> = {
       // lastLogin: serverTimestamp(), // Example: track last login
@@ -157,23 +156,19 @@ export const registerWithEmail = async (
 export const loginWithEmail = async (email: string, password: string): Promise<AuthUser> => {
   const userCredential = await signInWithEmailAndPassword(firebaseAuthInstance, email, password);
   const firebaseUser = userCredential.user;
+  const userDocRef = doc(db, 'users', firebaseUser.uid);
+  const userDocSnap = await getDoc(userDocRef);
 
-  // upsertUserDocument will fetch the existing Firestore user document.
-  // We pass an empty object for additionalData as we're not changing role/name on login here.
-  // The role should be pre-existing from manual setup (admin) or registration (coach/parent).
-  const userDoc = await upsertUserDocument(firebaseUser, {});
-
-  if (!userDoc || !userDoc.role) {
-    // This case should be rare if setup/registration is correct.
-    // It means the Firestore document for the user is missing or doesn't have a role.
-    // The Firestore rules might have prevented reading/creating this doc.
-    console.error(`User document or role not found for UID: ${firebaseUser.uid}. Check Firestore data and rules.`);
-    // Fallback or throw error - throwing might be better to highlight the issue.
-    // For now, let's try to proceed but log verbosely.
-    // If this happens, admin redirection will fail.
-    // This is where the "Missing or insufficient permissions" for reading /users/{uid} would manifest.
-    throw new Error("User document or role not found. Please contact support.");
+  if (!userDocSnap.exists()) {
+      // This is a critical failure. The user exists in Auth but not Firestore.
+      // This could happen if the Firestore user doc creation failed during signup.
+      // We should not proceed as we cannot determine their role.
+      // Log them out and show an error.
+      await signOut(); // Ensure they are logged out to prevent being in a broken state.
+      throw new Error("User document or role not found. Please contact support.");
   }
+  
+  const userDoc = userDocSnap.data() as UserDoc;
   
   let parentUsernameForRouting: string | undefined = undefined;
   if (userDoc.role === 'parent') {
