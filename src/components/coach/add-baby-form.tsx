@@ -1,4 +1,3 @@
-
 /**
  * @fileoverview Reusable form component for adding or editing baby profiles.
  * Uses react-hook-form and Zod for validation. Data is saved to Firestore.
@@ -13,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -266,6 +264,27 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="coachNotes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1">
+                    <MessageSquareText className="h-4 w-4" />
+                    הערות יועצת (יוצגו להורים)
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="המלצות, תוכנית פעולה, דגשים להורים..."
+                      {...field}
+                      rows={4}
+                      disabled={isSubmitting}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             {!isEditMode && (
               <>
                 <h3 className="text-lg font-semibold border-b pb-2 pt-4">פרטי הורים להזמנה</h3>
@@ -299,27 +318,7 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                 </div>
               </>
             )}
-            <FormField
-              control={form.control}
-              name="coachNotes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-1">
-                    <MessageSquareText className="h-4 w-4" />
-                    הערות יועצת (יוצגו להורים)
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="המלצות, תוכנית פעולה, דגשים להורים..."
-                      {...field}
-                      rows={4}
-                      disabled={isSubmitting}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            
             <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting}>
               {isSubmitting ? (isEditMode ? "מעדכן..." : "יוצר הזמנה...") : submitButtonText}
             </Button>
