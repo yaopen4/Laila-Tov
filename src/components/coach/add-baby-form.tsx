@@ -344,4 +344,3 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
     </Card>
   );
 }
-
