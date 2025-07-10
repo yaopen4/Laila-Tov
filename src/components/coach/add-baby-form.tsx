@@ -131,7 +131,8 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
    * @param {AddBabyAndInviteFormData} values - The validated form data.
    */
   async function onSubmit(values: AddBabyAndInviteFormData) {
-    await onSubmitProp({ ...values, parentUsername: values.parentUsername.toLowerCase() }, initialData?.id);
+    const generatedUsername = `${values.name.toLowerCase().replace(/\s+/g, '-')}-${values.familyName.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
+    await onSubmitProp({ ...values, parentUsername: generatedUsername }, initialData?.id);
   }
 
   const formTitle = isEditMode ? `עריכת פרטי ${initialData?.name || 'תינוק'}` : "יצירת הזמנה להורים";
@@ -196,22 +197,9 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="parentUsername"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>כינוי לתינוק (לקישור הורים)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="לדוגמא: cohen-baby (באנגלית)" {...field} disabled={isEditMode || isSubmitting} />
-                    </FormControl>
-                     <FormDescription>
-                      ישמש כמזהה ייחודי. לא ניתן לשינוי לאחר היצירה.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+
+              <div />
+              
               <FormField
                 control={form.control}
                 name="motherName"
