@@ -8,22 +8,13 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card"; // Removed CardTitle
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
-import { LogIn, UserPlus, Users, Briefcase } from 'lucide-react';
+import { LogIn, UserPlus, Briefcase } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator"; // Added Separator
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { loginWithEmail, registerWithEmail, type AuthUser, type UserDoc } from '@/services/authService';
+import { Separator } from "@/components/ui/separator";
+import { loginWithEmail, registerWithEmail, type AuthUser } from '@/services/authService';
 import type { Invite } from '@/types';
 import { getInviteByCodeFromFirestore, redeemInvitePartially } from '@/services/inviteService';
 import { createCoachProfile } from '@/services/coachService';
@@ -43,24 +34,13 @@ const getRedirectPath = (user: AuthUser): string => {
 
 
 const LoginForm: FC = () => {
-  const [activeTab, setActiveTab] = useState("login"); // Default to "login" (which becomes "מדריכת שינה")
+  const [activeTab, setActiveTab] = useState("login");
 
-  // Login state
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-
-  // Parent Sign up with Invite state
+  // State for all form types
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
-  const [parentEmailForInvite, setParentEmailForInvite] = useState('');
-  const [parentPasswordForInvite, setParentPasswordForInvite] = useState('');
-
-
-  // Coach Registration state
-  const [coachName, setCoachName] = useState('');
-  const [coachEmail, setCoachEmail] = useState('');
-  const [coachPassword, setCoachPassword] = useState('');
-  const [coachConfirmPassword, setCoachConfirmPassword] = useState('');
-  const [isCoachRegistrationDialogOpen, setIsCoachRegistrationDialogOpen] = useState(false);
+  const [name, setName] = useState('');
 
 
   const [isLoading, setIsLoading] = useState(false);
@@ -71,14 +51,14 @@ const LoginForm: FC = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    if (loginPassword.length < 6) {
+    if (password.length < 6) {
       toast({ title: "שגיאה", description: "סיסמה חייבת להכיל לפחות 6 תווים.", variant: "destructive" });
       setIsLoading(false);
       return;
     }
 
     try {
-      const loggedInUser = await loginWithEmail(loginEmail.toLowerCase(), loginPassword);
+      const loggedInUser = await loginWithEmail(email.toLowerCase(), password);
 
       if (!loggedInUser || !loggedInUser.role) {
          toast({
@@ -100,7 +80,6 @@ const LoginForm: FC = () => {
         setIsLoading(false);
         return;
       }
-
 
       toast({ title: "התחברות הצליחה", description: `ברוך הבא, ${loggedInUser.name || loggedInUser.email}!` });
       router.push(getRedirectPath(loggedInUser));
@@ -124,9 +103,9 @@ const LoginForm: FC = () => {
     }
   };
 
-  const handleParentSignUpWithInvite = async (e: React.FormEvent) => {
+  const handleInviteRedemption = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (parentPasswordForInvite.length < 6) {
+    if (password.length < 6) {
         toast({ title: "שגיאה", description: "סיסמה חייבת להכיל לפחות 6 תווים.", variant: "destructive" });
         return;
     }
@@ -135,7 +114,7 @@ const LoginForm: FC = () => {
     try {
       const invite = await getInviteByCodeFromFirestore(inviteCode);
       if (!invite) {
-        toast({ title: "קוד הזמנה לא תקין", description: "הקוד שהוזן לא נמצא או שכבר נעשה בו שימוש מלא.", variant: "destructive" });
+        toast({ title: "קוד הזמנה לא תקין", description: "הקוד שהוזן לא נמצא או שכבר נעשה בו שימוש.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
@@ -146,105 +125,67 @@ const LoginForm: FC = () => {
         return;
       }
       
-      const normalizedParentEmail = parentEmailForInvite.toLowerCase();
-      if (!invite.parentEmails.includes(normalizedParentEmail)) {
+      const normalizedEmail = email.toLowerCase();
+      // For parent invites, parentEmails will be an array. For coaches, it might be a single string or an array with one email.
+      // Let's ensure parentEmails is always treated as an array in the invite document.
+      const authorizedEmails = Array.isArray(invite.parentEmails) ? invite.parentEmails : [invite.parentEmails];
+      if (!authorizedEmails.includes(normalizedEmail)) {
         toast({ title: "אימייל לא תואם", description: "כתובת האימייל שהוזנה אינה תואמת להזמנה.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
-      if (invite.usedBy.some(user => user.email === normalizedParentEmail)) {
+      if (invite.usedBy.some(user => user.email === normalizedEmail)) {
          toast({ title: "אימייל כבר בשימוש", description: "כתובת אימייל זו כבר ניצלה הזמנה זו.", variant: "destructive" });
          setIsLoading(false);
          return;
       }
 
-      const parentNameFromEmail = parentEmailForInvite.split('@')[0] || "Parent";
+      // Determine the role from the invite itself, defaulting to parent
+      const role = invite.babyData ? 'parent' : 'coach'; 
+      const displayName = role === 'coach' ? name : (email.split('@')[0] || "Parent");
 
       const authUser = await registerWithEmail(
-        normalizedParentEmail,
-        parentPasswordForInvite,
-        parentNameFromEmail, 
-        'parent',
-        'active',
+        normalizedEmail,
+        password,
+        displayName, 
+        role,
+        'active', // Invites grant active status directly
         invite
       );
+      
+      // If it's a coach, also create their specific profile
+      if (role === 'coach') {
+        await createCoachProfile(authUser.uid, normalizedEmail, displayName, 'active');
+      }
 
-      await redeemInvitePartially(invite.id, authUser.uid, normalizedParentEmail);
+      await redeemInvitePartially(invite.id, authUser.uid, normalizedEmail);
 
-      toast({ title: "רישום הורים הושלם!", description: `ברוך הבא, ${parentNameFromEmail}! התינוק ${invite.babyData.name} קושר לחשבונך.` });
+      const welcomeMessage = role === 'parent' 
+        ? `ברוך הבא! התינוק ${invite.babyData.name} קושר לחשבונך.` 
+        : `ברוכה הבאה, ${displayName}! חשבונך כיועצת פעיל כעת.`;
+      toast({ title: "רישום הושלם!", description: welcomeMessage });
+      
       router.push(getRedirectPath(authUser));
 
     } catch (error: any) {
-      console.error("Parent sign up error:", error);
+      console.error("Invite redemption error:", error);
       let message = "אירעה שגיאה ברישום. נסה שוב.";
-      if (error.code === 'auth/email-already-in-use') {
+       if (error.code === 'auth/email-already-in-use') {
         message = "כתובת אימייל זו כבר רשומה. נסה להתחבר או להשתמש באימייל אחר.";
       } else if (error.code === 'auth/weak-password') {
         message = "הסיסמה חלשה מדי. אנא בחר סיסמה חזקה יותר (לפחות 6 תווים).";
-      } else if (error.message?.includes('Invite code not found')) {
+      } else if (error.message?.includes('not found')) {
         message = "קוד ההזמנה שהוזן אינו תקין."
-      } else if (error.message?.includes('already fully redeemed')) {
+      } else if (error.message?.includes('fully redeemed') || error.message?.includes('completed')) {
         message = "קוד הזמנה זה כבר נוצל במלואו."
-      } else if (error.message?.includes('invite has expired')) {
+      } else if (error.message?.includes('expired')) {
         message = "ההזמנה פגה."
       } else if (error.message?.includes('Email does not match')) {
         message = "כתובת האימייל אינה תואמת להזמנה זו."
-      } else if (error.message?.includes('already redeemed this invite')) {
+      } else if (error.message?.includes('already redeemed')) {
         message = "כתובת אימייל זו כבר ניצלה הזמנה זו."
       }
-      toast({ title: "שגיאה ברישום הורים", description: message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-
-  const handleCoachRegistration = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (coachPassword !== coachConfirmPassword) {
-      toast({ title: "שגיאה", description: "הסיסמאות אינן תואמות.", variant: "destructive" });
-      return;
-    }
-     if (coachPassword.length < 6) {
-        toast({ title: "שגיאה", description: "סיסמה חייבת להכיל לפחות 6 תווים.", variant: "destructive" });
-        return;
-    }
-    setIsLoading(true);
-
-    try {
-      const normalizedCoachEmail = coachEmail.toLowerCase();
-      const authUser = await registerWithEmail(
-        normalizedCoachEmail,
-        coachPassword,
-        coachName,
-        'coach',
-        'active' 
-      );
-      
-      await createCoachProfile(authUser.uid, normalizedCoachEmail, coachName, 'pending_approval');
-
-
-      toast({ title: "רישום יועצת הצליח!", description: `ברוכה הבאה, ${coachName}! חשבונך נוצר וממתין לאישור מנהל.` });
-      setIsCoachRegistrationDialogOpen(false); 
-      setActiveTab("login"); 
-      setLoginEmail(normalizedCoachEmail); 
-      setLoginPassword('');
-      
-      setCoachName('');
-      setCoachEmail('');
-      setCoachPassword('');
-      setCoachConfirmPassword('');
-
-
-    } catch (error: any) {
-      console.error("Coach registration error:", error);
-      let message = "אירעה שגיאה ברישום. נסה שוב.";
-      if (error.code === 'auth/email-already-in-use') {
-        message = "כתובת אימייל זו כבר רשומה. נסה להתחבר או להשתמש באימייל אחר.";
-      } else if (error.code === 'auth/weak-password') {
-        message = "הסיסמה חלשה מדי. אנא בחר סיסמה חזקה יותר (לפחות 6 תווים).";
-      }
-      toast({ title: "שגיאה ברישום יועצת", description: message, variant: "destructive" });
+      toast({ title: "שגיאה ברישום", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -255,19 +196,26 @@ const LoginForm: FC = () => {
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-br from-background to-accent/10">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center pb-4">
-          <div className="mx-auto mb-2"> {/* Reduced margin bottom */}
+          <div className="mx-auto mb-2">
             <AppLogo className="text-5xl" />
           </div>
            <CardDescription className="text-sm text-muted-foreground">מערכת מעקב שינה לתינוקות</CardDescription>
         </CardHeader>
         <CardContent>
-          <Separator className="my-4" /> {/* Added separator */}
-          <h3 className="text-lg font-semibold text-center mb-4">התחבר בתור</h3> {/* Added H3 header */}
+          <Separator className="my-4" />
+          <h3 className="text-lg font-semibold text-center mb-4">התחבר בתור</h3>
           
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">מדריכת שינה</TabsTrigger> {/* Changed text, "login" is default */}
-              <TabsTrigger value="parent-code">הורה</TabsTrigger> {/* Changed text */}
+          <Tabs defaultValue="login" className="w-full" onValueChange={() => {
+            // Reset fields on tab change
+            setEmail('');
+            setPassword('');
+            setInviteCode('');
+            setName('');
+          }}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="login">כניסה</TabsTrigger>
+              <TabsTrigger value="parent-invite">הורה עם קוד</TabsTrigger>
+              <TabsTrigger value="coach-invite">יועצת עם קוד</TabsTrigger>
             </TabsList>
             
             <TabsContent value="login" className="pt-6">
@@ -278,8 +226,8 @@ const LoginForm: FC = () => {
                     id="email-login"
                     type="email" 
                     placeholder="your@email.com"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                     className="text-right"
                   />
@@ -290,8 +238,8 @@ const LoginForm: FC = () => {
                     id="password-login"
                     type="password"
                     placeholder="סיסמה"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     required
                     className="text-right"
                   />
@@ -303,23 +251,23 @@ const LoginForm: FC = () => {
               </form>
             </TabsContent>
 
-            <TabsContent value="parent-code" className="pt-6">
-              <form onSubmit={handleParentSignUpWithInvite} className="space-y-6">
+            <TabsContent value="parent-invite" className="pt-6">
+               <form onSubmit={handleInviteRedemption} className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="parent-email-invite">אימייל (של ההורה)</Label>
                   <Input
                     id="parent-email-invite"
                     type="email"
                     placeholder="your@email.com"
-                    value={parentEmailForInvite}
-                    onChange={(e) => setParentEmailForInvite(e.target.value)}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="invite-code">קוד הזמנה</Label>
+                  <Label htmlFor="parent-invite-code">קוד הזמנה</Label>
                   <Input
-                    id="invite-code"
+                    id="parent-invite-code"
                     type="text"
                     placeholder="קוד שקיבלת מהיועצת"
                     value={inviteCode}
@@ -333,8 +281,8 @@ const LoginForm: FC = () => {
                     id="parent-password-invite"
                     type="password"
                     placeholder="לפחות 6 תווים"
-                    value={parentPasswordForInvite}
-                    onChange={(e) => setParentPasswordForInvite(e.target.value)}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     required
                   />
                 </div>
@@ -344,93 +292,65 @@ const LoginForm: FC = () => {
                 </Button>
               </form>
             </TabsContent>
+
+            <TabsContent value="coach-invite" className="pt-6">
+              <form onSubmit={handleInviteRedemption} className="space-y-6">
+                <div className="space-y-2">
+                    <Label htmlFor="coach-name-invite">שם מלא</Label>
+                    <Input
+                      id="coach-name-invite"
+                      type="text"
+                      placeholder="שם פרטי ומשפחה"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="coach-email-invite">אימייל (של היועצת)</Label>
+                  <Input
+                    id="coach-email-invite"
+                    type="email"
+                    placeholder="your.coach@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="coach-invite-code">קוד הזמנה</Label>
+                  <Input
+                    id="coach-invite-code"
+                    type="text"
+                    placeholder="קוד שקיבלת מהמנהל"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="coach-password-invite">סיסמה</Label>
+                  <Input
+                    id="coach-password-invite"
+                    type="password"
+                    placeholder="לפחות 6 תווים"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? "רושם..." : "הירשמי עם קוד"}
+                  {!isLoading && <Briefcase className="ms-2 h-4 w-4" />}
+                </Button>
+              </form>
+            </TabsContent>
+
           </Tabs>
         </CardContent>
       </Card>
-
-      <Dialog open={isCoachRegistrationDialogOpen} onOpenChange={setIsCoachRegistrationDialogOpen}>
-        <DialogTrigger asChild>
-          <Button variant="link" className="mt-6 text-primary hover:text-primary/80">
-            <Briefcase className="me-2 h-4 w-4" />
-            מעוניינ/ת להצטרף כיועצת? הירשמ/י כאן
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>רישום יועצת שינה</DialogTitle>
-            <DialogDescription>
-              מלא/י את הפרטים להגשת בקשת הצטרפות. חשבונך יעבור אישור מנהל.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCoachRegistration} className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="coach-name-dialog" className="text-right col-span-1">
-                שם מלא
-              </Label>
-              <Input
-                id="coach-name-dialog"
-                type="text"
-                placeholder="שם פרטי ומשפחה"
-                value={coachName}
-                onChange={(e) => setCoachName(e.target.value)}
-                required
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="coach-email-dialog" className="text-right col-span-1">
-                אימייל
-              </Label>
-              <Input
-                id="coach-email-dialog"
-                type="email"
-                placeholder="your.coach@email.com"
-                value={coachEmail}
-                onChange={(e) => setCoachEmail(e.target.value)}
-                required
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="coach-password-dialog" className="text-right col-span-1">
-                סיסמה
-              </Label>
-              <Input
-                id="coach-password-dialog"
-                type="password"
-                placeholder="לפחות 6 תווים"
-                value={coachPassword}
-                onChange={(e) => setCoachPassword(e.target.value)}
-                required
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="coach-confirm-password-dialog" className="text-right col-span-1">
-                אימות סיסמה
-              </Label>
-              <Input
-                id="coach-confirm-password-dialog"
-                type="password"
-                placeholder="הקלד/י סיסמה שוב"
-                value={coachConfirmPassword}
-                onChange={(e) => setCoachConfirmPassword(e.target.value)}
-                required
-                className="col-span-3"
-              />
-            </div>
-            <DialogFooter>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "רושם..." : "הירשמי כיועצת"}
-                {!isLoading && <Users className="ms-2 h-4 w-4" />}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
 
 export default LoginForm;
-

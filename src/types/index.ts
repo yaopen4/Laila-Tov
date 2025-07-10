@@ -106,16 +106,16 @@ export interface Invite {
   id: string;
   /** UID of the coach who created the invite. */
   coachId: string;
-  /** Data for the baby to be created/linked. parentUsername within babyData becomes the baby's document ID. */
-  babyData: BabyFormData;
-  /** Array of email addresses of the intended parents. */
+  /** Data for the baby to be created/linked. If this is null/undefined, it's a coach invite. */
+  babyData?: BabyFormData;
+  /** Array of email addresses of the intended users. */
   parentEmails: string[];
   /** Status of the invite. */
   status: 'pending' | 'partially_redeemed' | 'completed' | 'expired';
   /** Array of users who have redeemed this invite. */
   usedBy: Array<{
-    userId: string; // Firebase Auth UID of the parent
-    email: string;  // Email of the parent
+    userId: string; // Firebase Auth UID of the user
+    email: string;  // Email of the user
     redeemedAt: Timestamp;
   }>;
   /** Timestamp of when the invite was created. */
