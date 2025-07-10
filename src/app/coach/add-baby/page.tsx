@@ -1,20 +1,17 @@
-
 /**
- * @fileoverview Page for coaches to create an invite for parents.
- * This page uses the AddBabyForm component to capture baby details and parent emails.
- * It then calls the invite service to generate an invite code.
+ * @fileoverview Page for coaches to create a new baby profile.
+ * This page uses the AddBabyForm component to capture baby details.
+ * It then calls a service to create the baby and a corresponding invite in Firestore.
  */
 "use client";
-import { AddBabyForm, type AddBabyAndInviteFormData } from "@/components/coach/add-baby-form";
-import { isParentUsernameTakenInFirestore } from "@/services/babyService"; // To check if baby's unique ID (parentUsername) is taken
-import { createInviteInFirestore } from "@/services/inviteService";
+import { AddBabyForm, type BabyFormData } from "@/components/coach/add-baby-form";
+import { addBabyToFirestore, isParentUsernameTakenInFirestore } from "@/services/babyService";
 import { getCurrentUser } from "@/services/authService";
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import type { BabyFormData } from "@/types"; // For the babyData part of the invite
 
-export default function CreateInvitePage() {
+export default function AddBabyPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [coachUid, setCoachUid] = useState<string | undefined>(undefined);
@@ -26,11 +23,10 @@ export default function CreateInvitePage() {
       if (user && user.role === 'coach') {
         setCoachUid(user.uid);
       } else {
-        // Redirect if not a coach or no user
         router.push('/coach/dashboard');
          toast({
           title: "גישה נדחתה",
-          description: "עליך להיות מחובר כיועצת כדי ליצור הזמנות.",
+          description: "עליך להיות מחובר כיועצת כדי ליצור פרופילי תינוקות.",
           variant: "destructive",
         });
       }
@@ -39,17 +35,16 @@ export default function CreateInvitePage() {
   }, [router, toast]);
 
   /**
-   * Handles the submission of the new invite form.
-   * Validates parent username uniqueness against Firestore before creating the invite.
-   * Creates an invite in Firestore and navigates to the dashboard.
-   * @param {AddBabyAndInviteFormData} values - The form data including baby details and parent emails.
+   * Handles the submission of the new baby form.
+   * Creates a baby document and an associated invite in Firestore.
+   * @param {BabyFormData} values - The form data including baby details and optional parent emails.
    */
-  const handleCreateInviteSubmit = async (values: AddBabyAndInviteFormData) => {
+  const handleCreateBabySubmit = async (values: BabyFormData) => {
     setIsSubmitting(true);
     if (!coachUid) {
       toast({
         title: "שגיאה: יועצת לא מזוהה",
-        description: "לא ניתן ליצור הזמנה ללא מזהה יועצת.",
+        description: "לא ניתן ליצור פרופיל ללא מזהה יועצת.",
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -57,53 +52,38 @@ export default function CreateInvitePage() {
     }
 
     try {
-      // The parentUsername will be used as the baby's document ID eventually.
-      // It needs to be unique among existing babies.
-      if (await isParentUsernameTakenInFirestore(values.parentUsername.toLowerCase())) {
-        toast({
-          title: "כינוי תינוק תפוס",
-          description: `הכינוי "${values.parentUsername}" כבר קיים עבור תינוק אחר. נא לבחור כינוי אחר.`,
+      // Auto-generate a unique parentUsername for the baby document ID
+      const parentUsername = `${values.name.toLowerCase().replace(/\s+/g, '-')}-${values.familyName.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
+      
+      if (await isParentUsernameTakenInFirestore(parentUsername)) {
+         // This is highly unlikely with the random suffix, but good practice to check
+         toast({
+          title: "שגיאה ביצירת מזהה",
+          description: "אירעה שגיאה נדירה ביצירת מזהה ייחודי. אנא נסה שוב.",
           variant: "destructive",
         });
         setIsSubmitting(false);
-        return; 
+        return;
       }
+      
+      // Filter out empty strings from parent emails
+      const parentEmails = [values.parentEmail1, values.parentEmail2].filter((email): email is string => !!email);
 
-      const parentEmails = [values.parentEmail1.toLowerCase(), values.parentEmail2.toLowerCase()];
+      const babyDataForCreation = { ...values, parentUsername, parentEmails };
 
-      // Prepare babyData for the invite (conforms to BabyFormData type)
-      const babyDataForInvite: BabyFormData = {
-        name: values.name,
-        familyName: values.familyName,
-        age: values.age,
-        motherName: values.motherName,
-        fatherName: values.fatherName,
-        siblingsCount: values.siblingsCount,
-        siblingsNames: values.siblingsNames,
-        description: values.description,
-        parentUsername: values.parentUsername.toLowerCase(), // Stored lowercase, used as baby doc ID
-        coachNotes: values.coachNotes,
-      };
-
-      const inviteCode = await createInviteInFirestore(coachUid, babyDataForInvite, parentEmails);
+      await addBabyToFirestore(babyDataForCreation, coachUid);
       
       toast({
-        title: "הזמנה נוצרה בהצלחה!",
-        description: (
-          <div>
-            <p>ההזמנה עבור {values.name} {values.familyName} נוצרה.</p>
-            <p className="mt-1"><strong>קוד ההזמנה:</strong> <span className="font-mono bg-muted px-1 py-0.5 rounded">{inviteCode}</span></p>
-            <p className="text-xs mt-1">יש למסור קוד זה להורים.</p>
-          </div>
-        ),
-        duration: 10000, // Keep toast longer to copy code
+        title: "פרופיל תינוק נוצר בהצלחה!",
+        description: `הפרופיל עבור ${values.name} ${values.familyName} נוסף. תוכל למצוא את קוד ההזמנה בעריכת הפרופיל.`,
+        duration: 7000,
       });
       router.push('/coach/dashboard');
     } catch (error) {
-      console.error("Error creating invite:", error);
+      console.error("Error creating baby:", error);
       toast({
-        title: "שגיאה ביצירת הזמנה",
-        description: "אירעה שגיאה בעת ניסיון ליצור את ההזמנה. נסה שוב.",
+        title: "שגיאה ביצירת פרופיל",
+        description: "אירעה שגיאה בעת ניסיון ליצור את הפרופיל. נסה שוב.",
         variant: "destructive",
       });
     } finally {
@@ -113,8 +93,7 @@ export default function CreateInvitePage() {
 
   return (
     <div className="container mx-auto py-8">
-      {/* The AddBabyForm is now used for creating invites; initialData is null for new invites */}
-      <AddBabyForm onSubmitProp={handleCreateInviteSubmit} isSubmitting={isSubmitting} isEditMode={false} />
+      <AddBabyForm onSubmitProp={handleCreateBabySubmit} isSubmitting={isSubmitting} isEditMode={false} />
     </div>
   );
 }

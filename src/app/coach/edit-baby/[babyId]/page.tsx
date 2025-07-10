@@ -1,4 +1,3 @@
-
 /**
  * @fileoverview Page for editing an existing baby's profile from Firestore.
  * Fetches baby data by ID and uses AddBabyForm in edit mode.
@@ -10,6 +9,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AddBabyForm, type BabyFormData } from '@/components/coach/add-baby-form';
 import { getBabyByIdFromFirestore, updateBabyInFirestore, archiveBabyInFirestore, type Baby } from '@/services/babyService';
+import { updateInviteInFirestore } from '@/services/inviteService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Archive as ArchiveIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -46,14 +46,13 @@ export default function EditBabyPage() {
     }
   }, [babyId, toast]);
 
-  // Effect to fetch baby data when babyId changes
   useEffect(() => {
     fetchBabyData();
   }, [fetchBabyData]);
 
   /**
    * Handles the submission of the edited baby form.
-   * Updates the baby's data in Firestore.
+   * Updates the baby's data and associated invite in Firestore.
    * @param {BabyFormData} values - The updated form data.
    * @param {string} [id] - The ID of the baby being edited.
    */
@@ -61,19 +60,34 @@ export default function EditBabyPage() {
     if (!id || !baby) return;
     setIsSubmitting(true);
     
-    const updatedBabyData: Partial<Omit<Baby, 'id'>> = { ...values };
-    // parentUsername is not editable, so no need to check for uniqueness again.
-    // Ensure parentUsername is stored in lowercase if it were editable
-    // updatedBabyData.parentUsername = values.parentUsername.toLowerCase();
-
-
     try {
+      // 1. Update the Baby document
+      const parentEmails = [values.parentEmail1, values.parentEmail2].filter((email): email is string => !!email);
+      const updatedBabyData: Partial<Omit<Baby, 'id'>> = {
+          name: values.name,
+          familyName: values.familyName,
+          age: values.age,
+          motherName: values.motherName,
+          fatherName: values.fatherName,
+          siblingsCount: values.siblingsCount,
+          siblingsNames: values.siblingsNames,
+          description: values.description,
+          coachNotes: values.coachNotes,
+          parentEmails: parentEmails,
+      };
       await updateBabyInFirestore(id, updatedBabyData);
+
+      // 2. Update the corresponding Invite document with the new emails
+      if (baby.inviteCode) {
+        await updateInviteInFirestore(baby.inviteCode, { parentEmails });
+      }
+
       toast({
         title: "פרטי תינוק עודכנו!",
         description: `הפרופיל של ${values.name} ${values.familyName} עודכן.`,
       });
-      router.push('/coach/dashboard');
+      // No need to redirect, just refresh data if needed or let user stay on page
+      await fetchBabyData(); 
     } catch (error) {
       console.error("Error updating baby:", error);
       toast({
@@ -111,57 +125,35 @@ export default function EditBabyPage() {
     }
   };
 
-  // Loading state UI
   if (isLoading) {
-    return (
-      <div className="container mx-auto py-8">
-        <Skeleton className="h-12 w-1/2 mb-6" />
-        <Skeleton className="h-96 w-full" />
-        <Skeleton className="h-10 w-1/4 mt-4" />
-      </div>
-    );
+    return <div className="container mx-auto py-8"><Skeleton className="h-96 w-full" /></div>;
   }
 
-  // Baby not found UI
   if (!baby) {
     return (
       <div className="container mx-auto py-8 text-center">
         <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
         <h1 className="text-2xl font-semibold mb-2">תינוק לא נמצא</h1>
-        <p className="text-muted-foreground mb-6">
-          לא הצלחנו למצוא את פרטי התינוק עם המזהה שהתקבל. ייתכן שהוא נמחק.
-        </p>
-        <div className="flex justify-center gap-4">
-          <Link href="/coach/dashboard" passHref legacyBehavior>
-            <Button>חזרה ללוח הבקרה</Button>
-          </Link>
-        </div>
+        <p className="text-muted-foreground mb-6">לא הצלחנו למצוא את פרטי התינוק.</p>
+        <Link href="/coach/dashboard" passHref legacyBehavior><Button>חזרה ללוח הבקרה</Button></Link>
       </div>
     );
   }
   
-  // Baby is archived, show message instead of edit form
   if (baby.isArchived) {
      return (
       <div className="container mx-auto py-8 text-center">
         <ArchiveIcon className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
         <h1 className="text-2xl font-semibold mb-2">{baby.name} {baby.familyName} נמצא בארכיון</h1>
-        <p className="text-muted-foreground mb-6">
-          תינוק זה הועבר לארכיון ולא ניתן לערוך אותו. ניתן לשחזר אותו מהארכיון.
-        </p>
+        <p className="text-muted-foreground mb-6">לא ניתן לערוך פרופיל בארכיון. יש לשחזר אותו תחילה.</p>
          <div className="flex justify-center gap-4">
-          <Link href="/coach/dashboard" passHref legacyBehavior>
-            <Button>חזרה ללוח הבקרה</Button>
-          </Link>
-          <Link href="/coach/archive" passHref legacyBehavior>
-            <Button variant="outline">מעבר לארכיון</Button>
-          </Link>
+          <Link href="/coach/dashboard" passHref legacyBehavior><Button>חזרה ללוח הבקרה</Button></Link>
+          <Link href="/coach/archive" passHref legacyBehavior><Button variant="outline">מעבר לארכיון</Button></Link>
         </div>
       </div>
     );
   }
 
-  // Main edit form UI
   return (
     <div className="container mx-auto py-8">
       <AddBabyForm
@@ -170,10 +162,15 @@ export default function EditBabyPage() {
         onSubmitProp={handleEditBabySubmit}
         isSubmitting={isSubmitting}
       />
-      <div className="mt-8 max-w-2xl mx-auto">
-        <Button variant="outline" onClick={handleArchive} className="w-full md:w-auto" disabled={isSubmitting}>
+      <div className="mt-8 max-w-2xl mx-auto border-t pt-6">
+        <h3 className="text-lg font-semibold text-destructive mb-2">אזור מסוכן</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+            העברת תינוק לארכיון תסיר אותו מלוח הבקרה הראשי ותמנע מההורים גישה.
+            ניתן לשחזר תינוק מהארכיון בכל עת.
+        </p>
+        <Button variant="destructive" onClick={handleArchive} disabled={isSubmitting}>
           <ArchiveIcon className="me-2 h-4 w-4" />
-          {isSubmitting && baby?.id === babyId ? "מעביר לארכיון..." : "העבר לארכיון"}
+          {isSubmitting ? "מעביר לארכיון..." : "העבר את התינוק לארכיון"}
         </Button>
       </div>
     </div>

@@ -1,16 +1,13 @@
-
 // src/services/inviteService.ts
 import {
   doc,
   getDoc,
   setDoc,
   updateDoc,
-  addDoc,
   collection,
   serverTimestamp,
   Timestamp,
   arrayUnion,
-  FieldValue,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Invite, BabyFormData, Baby } from '@/types';
@@ -19,10 +16,10 @@ const INVITES_COLLECTION = 'invites';
 const BABIES_COLLECTION = 'babies';
 
 /**
- * Creates a new invite in Firestore for a coach to give to parents.
+ * Creates a new invite in Firestore.
  * @param {string} coachId - UID of the coach creating the invite.
  * @param {BabyFormData} babyData - Data for the baby to be associated with the invite.
- * @param {string[]} parentEmails - Array of email addresses for the intended parents.
+ * @param {string[]} parentEmails - Array of email addresses for the intended parents. Can be empty.
  * @returns {Promise<string>} The ID (invite code) of the newly created invite document.
  */
 export const createInviteInFirestore = async (
@@ -34,8 +31,9 @@ export const createInviteInFirestore = async (
   const newInviteRef = doc(invitesRef); 
 
   const createdAt = serverTimestamp() as Timestamp;
+  // Make invites long-lived as emails might be added later
   const expiresAtDate = new Date();
-  expiresAtDate.setDate(expiresAtDate.getDate() + 30);
+  expiresAtDate.setFullYear(expiresAtDate.getFullYear() + 5); 
   const expiresAt = Timestamp.fromDate(expiresAtDate);
 
   const newInviteData: Omit<Invite, 'id'> = {
@@ -52,6 +50,17 @@ export const createInviteInFirestore = async (
   return newInviteRef.id;
 };
 
+/**
+ * Updates an existing invite in Firestore. Used to add/change emails.
+ * @param {string} inviteId - The ID of the invite to update.
+ * @param {Partial<Invite>} dataToUpdate - The fields to update (e.g., parentEmails).
+ * @returns {Promise<void>}
+ */
+export const updateInviteInFirestore = async (inviteId: string, dataToUpdate: Partial<Invite>): Promise<void> => {
+    const inviteRef = doc(db, INVITES_COLLECTION, inviteId);
+    await updateDoc(inviteRef, dataToUpdate);
+};
+
 
 /**
  * Retrieves an invite by its code (document ID) from Firestore.
@@ -65,7 +74,6 @@ export const getInviteByCodeFromFirestore = async (inviteCode: string): Promise<
 
   if (docSnap.exists()) {
     const inviteData = docSnap.data() as Omit<Invite, 'id'>;
-    // Check for expiration server-side, though client might check too
     if (inviteData.expiresAt && new Date() > (inviteData.expiresAt as Timestamp).toDate()) {
       if (inviteData.status !== 'expired') {
         await updateDoc(inviteRef, { status: 'expired' });
@@ -78,7 +86,7 @@ export const getInviteByCodeFromFirestore = async (inviteCode: string): Promise<
 };
 
 /**
- * Marks an invite as partially or fully redeemed and handles baby document creation/update if applicable.
+ * Marks an invite as partially or fully redeemed and updates the baby document.
  * @param {string} inviteId - The ID of the invite to redeem.
  * @param {string} redeemingUserId - The Firebase Auth UID of the user redeeming the invite.
  * @param {string} redeemingUserEmail - The email of the user redeeming the invite.
@@ -93,20 +101,14 @@ export const redeemInvitePartially = async (
   const inviteRef = doc(db, INVITES_COLLECTION, inviteId);
   const inviteSnap = await getDoc(inviteRef);
 
-  if (!inviteSnap.exists()) {
-    throw new Error('Invite code not found.');
-  }
+  if (!inviteSnap.exists()) throw new Error('Invite code not found.');
 
   const invite = { id: inviteSnap.id, ...inviteSnap.data() } as Invite;
   const normalizedRedeemingEmail = redeemingUserEmail.toLowerCase();
 
-  if (invite.status === 'completed') {
-    throw new Error('This invite has already been fully redeemed.');
-  }
+  if (invite.status === 'completed') throw new Error('This invite has already been fully redeemed.');
   if (invite.status === 'expired' || (invite.expiresAt && new Date() > (invite.expiresAt as Timestamp).toDate())) {
-    if (invite.status !== 'expired') {
-        await updateDoc(inviteRef, { status: 'expired' });
-    }
+    if (invite.status !== 'expired') await updateDoc(inviteRef, { status: 'expired' });
     throw new Error('This invite has expired.');
   }
   if (!invite.parentEmails.includes(normalizedRedeemingEmail)) {
@@ -123,42 +125,22 @@ export const redeemInvitePartially = async (
     redeemedAt: serverTimestamp() as Timestamp,
   });
 
-  let newStatus: Invite['status'] = invite.status;
-  const currentRedeemCount = invite.usedBy.length;
-  if (currentRedeemCount + 1 >= invite.parentEmails.length) {
+  let newStatus: Invite['status'] = 'partially_redeemed';
+  if (invite.usedBy.length + 1 >= invite.parentEmails.length) {
     newStatus = 'completed';
-  } else if (invite.babyData) { // Only parent invites can be partially redeemed
-    newStatus = 'partially_redeemed';
   }
 
-  await updateDoc(inviteRef, {
-    usedBy: updatedUsedBy,
-    status: newStatus,
-  });
+  await updateDoc(inviteRef, { usedBy: updatedUsedBy, status: newStatus });
 
-  // If it's a parent invite (identified by the presence of babyData), create/update the baby document.
+  // If it's a parent invite, update the corresponding baby document
   if (invite.babyData) {
       const babyDocId = invite.babyData.parentUsername;
       const babyDocRef = doc(db, BABIES_COLLECTION, babyDocId);
-      const babySnap = await getDoc(babyDocRef);
-
-      if (!babySnap.exists()) {
-        // First parent redeeming: create the baby document
-        const newBabyDocData: Omit<Baby, 'id' | 'sleepRecords'> = {
-          ...invite.babyData,
-          parentIds: [redeemingUserId],
-          coachId: invite.coachId,
-          isArchived: false,
-          dateArchived: null,
-          lastModified: (serverTimestamp() as Timestamp).toDate().toISOString(),
-        };
-        await setDoc(babyDocRef, newBabyDocData);
-      } else {
-        // Second (or subsequent) parent redeeming: update parentIds
-        await updateDoc(babyDocRef, {
-          parentIds: arrayUnion(redeemingUserId),
-          lastModified: (serverTimestamp() as Timestamp).toDate().toISOString(),
-        });
-      }
+      
+      // The baby document should already exist, so we just update it.
+      await updateDoc(babyDocRef, {
+        parentIds: arrayUnion(redeemingUserId),
+        lastModified: new Date().toISOString(),
+      });
   }
 };

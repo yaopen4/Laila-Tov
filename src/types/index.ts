@@ -1,4 +1,3 @@
-
 import type { Timestamp } from 'firebase/firestore';
 
 /**
@@ -55,10 +54,12 @@ export interface Baby {
   siblingsNames?: string;
   /** Optional general description about the baby. */
   description?: string;
-  /** Username for parents. Used as the ID for the baby document and for routing for parents. Should be unique. */
+  /** Unique username for the baby's profile, used as the document ID and for routing. */
   parentUsername: string;
   /** Array of Firebase Auth UIDs of the linked parents. */
   parentIds: string[];
+  /** Array of parent email addresses associated with the invite. */
+  parentEmails?: string[];
   /** Notes from the sleep consultant, visible to parents. */
   coachNotes?: string;
   /** Flag indicating if the baby's profile is archived. */
@@ -69,12 +70,14 @@ export interface Baby {
   lastModified: string;
   /** UID of the coach who created/manages this baby. */
   coachId: string;
+  /** The invite code associated with this baby. */
+  inviteCode: string;
   /** Sleep records for the baby, often fetched as a subcollection or embedded if small and few. */
   sleepRecords?: SleepRecord[];
 }
 
 /**
- * Type definition for data used when adding a new baby (now primarily through invites).
+ * Type definition for data used when adding or editing a baby.
  * Excludes fields that are auto-generated or managed by Firestore.
  */
 export type BabyFormData = {
@@ -86,8 +89,10 @@ export type BabyFormData = {
   siblingsCount: number;
   siblingsNames?: string;
   description?: string;
-  parentUsername: string; // This will be used as the ID for the baby document
   coachNotes?: string;
+  parentEmail1?: string;
+  parentEmail2?: string;
+  inviteCode?: string;
 };
 
 /**
@@ -108,7 +113,7 @@ export interface Invite {
   coachId: string;
   /** Data for the baby to be created/linked. If this is null/undefined, it's a coach invite. */
   babyData?: BabyFormData;
-  /** Array of email addresses of the intended users. */
+  /** Array of email addresses of the intended users. Can be empty. */
   parentEmails: string[];
   /** Status of the invite. */
   status: 'pending' | 'partially_redeemed' | 'completed' | 'expired';

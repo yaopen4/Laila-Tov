@@ -1,9 +1,8 @@
-
 // src/services/babyService.ts
 import {
   collection,
   doc,
-  addDoc,
+  setDoc,
   getDoc,
   getDocs,
   updateDoc,
@@ -13,11 +12,11 @@ import {
   orderBy,
   Timestamp,
   writeBatch,
-  collectionGroup,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Baby, SleepRecord, BabyFormData, SleepRecordFormData } from '@/types';
 import { format } from 'date-fns';
+import { createInviteInFirestore } from './inviteService';
 
 const BABIES_COLLECTION = 'babies';
 const SLEEP_RECORDS_SUBCOLLECTION = 'sleepRecords';
@@ -25,22 +24,48 @@ const SLEEP_RECORDS_SUBCOLLECTION = 'sleepRecords';
 const getCurrentISODate = (): string => new Date().toISOString();
 
 /**
- * Adds a new baby to Firestore.
- * @param {BabyFormData} babyData - The baby's data.
- * @param {string | undefined} coachAuthUid - UID of the coach adding the baby.
+ * Adds a new baby to Firestore and creates an associated invite.
+ * @param {Omit<BabyFormData, 'inviteCode'> & { parentUsername: string, parentEmails: string[] }} babyData - The baby's data, including generated username and optional emails.
+ * @param {string} coachAuthUid - UID of the coach adding the baby.
  * @returns {Promise<string>} The ID of the newly created baby document.
  */
-export const addBabyToFirestore = async (babyData: BabyFormData, coachAuthUid?: string): Promise<string> => {
+export const addBabyToFirestore = async (
+  babyData: Omit<BabyFormData, 'inviteCode'> & { parentUsername: string, parentEmails: string[] },
+  coachAuthUid: string
+): Promise<string> => {
+  // 1. Create the invite first to get its ID (the invite code)
+  const inviteCode = await createInviteInFirestore(
+    coachAuthUid,
+    {...babyData}, // Pass baby data to the invite
+    babyData.parentEmails
+  );
+
+  // 2. Create the baby document using the auto-generated username as its ID
+  const babyDocRef = doc(db, BABIES_COLLECTION, babyData.parentUsername);
   const newBabyDoc: Omit<Baby, 'id' | 'sleepRecords'> = {
-    ...babyData,
+    name: babyData.name,
+    familyName: babyData.familyName,
+    age: babyData.age,
+    motherName: babyData.motherName,
+    fatherName: babyData.fatherName,
+    siblingsCount: babyData.siblingsCount,
+    siblingsNames: babyData.siblingsNames,
+    description: babyData.description,
+    parentUsername: babyData.parentUsername,
+    coachNotes: babyData.coachNotes,
+    parentEmails: babyData.parentEmails,
+    parentIds: [], // Initially empty, populated on invite redemption
     isArchived: false,
     dateArchived: null,
     lastModified: getCurrentISODate(),
-    ...(coachAuthUid && { coachAuthUid }), // Optionally add coach UID
+    coachId: coachAuthUid,
+    inviteCode: inviteCode, // Store the invite code
   };
-  const docRef = await addDoc(collection(db, BABIES_COLLECTION), newBabyDoc);
-  return docRef.id;
+  await setDoc(babyDocRef, newBabyDoc);
+
+  return babyDocRef.id;
 };
+
 
 /**
  * Retrieves a baby by its ID from Firestore.
@@ -134,6 +159,13 @@ export const deleteBabyPermanentlyFromFirestore = async (babyId: string): Promis
   const babyDocRef = doc(db, BABIES_COLLECTION, babyId);
   batch.delete(babyDocRef);
 
+  // TODO: Also delete the associated invite document if desired.
+  // const babyData = await getBabyByIdFromFirestore(babyId);
+  // if(babyData?.inviteCode) {
+  //   const inviteRef = doc(db, 'invites', babyData.inviteCode);
+  //   batch.delete(inviteRef);
+  // }
+
   await batch.commit();
 };
 
@@ -171,26 +203,12 @@ export const getArchivedBabiesFromFirestore = async (): Promise<Baby[]> => {
 /**
  * Checks if a parent username is already taken by another non-archived baby.
  * @param {string} username - The username to check.
- * @param {string} [currentBabyId] - Optional. If provided, this baby ID will be excluded from the check.
  * @returns {Promise<boolean>} True if the username is taken, false otherwise.
  */
-export const isParentUsernameTakenInFirestore = async (username: string, currentBabyId?: string): Promise<boolean> => {
-  const normalizedUsername = username.toLowerCase();
-  let q = query(
-    collection(db, BABIES_COLLECTION),
-    where('parentUsername', '==', normalizedUsername),
-    where('isArchived', '==', false)
-  );
-
-  const querySnapshot = await getDocs(q);
-  if (querySnapshot.empty) {
-    return false;
-  }
-  // If currentBabyId is provided, check if the found doc is not the current baby
-  if (currentBabyId) {
-    return querySnapshot.docs.some(docSnap => docSnap.id !== currentBabyId);
-  }
-  return true; // Username taken by at least one other baby
+export const isParentUsernameTakenInFirestore = async (username: string): Promise<boolean> => {
+  const docRef = doc(db, BABIES_COLLECTION, username.toLowerCase());
+  const docSnap = await getDoc(docRef);
+  return docSnap.exists();
 };
 
 
