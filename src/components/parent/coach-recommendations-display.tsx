@@ -34,7 +34,7 @@ const CoachRecommendationsDisplay: FC<CoachRecommendationsDisplayProps> = ({ not
           // whitespace-pre-line preserves newlines from the consultant's input.
           <p className="text-muted-foreground whitespace-pre-line dark:text-slate-200">{notes}</p>
         ) : (
-          <p className="text-muted-foreground dark:text-slate-200">אין כרגע המלצות מהיועצת.</p>
+          <p className="text-muted-foreground dark:text-slate-200">אין כרגע הודעה מהיועצת.</p>
         )}
       </CardContent>
     </Card>

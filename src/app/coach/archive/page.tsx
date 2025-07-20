@@ -29,6 +29,7 @@ import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 import Link from 'next/link';
 import { Card, CardContent } from "@/components/ui/card";
+import { onAuthChange, type AuthUser } from '@/services/authService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,19 +45,40 @@ export default function ArchivePage() {
   const [archivedBabies, setArchivedBabies] = useState<Baby[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [babyToDelete, setBabyToDelete] = useState<Baby | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
 
+  // Get the currently authenticated user
+  useEffect(() => {
+    const unsubscribe = onAuthChange((user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
   /**
-   * Fetches the list of archived babies from Firestore.
+   * Fetches the list of archived babies from Firestore for the current coach.
    */
   const fetchArchivedBabies = useCallback(async () => {
+    if (!currentUser) return; // Don't fetch if no user is logged in
+    
     setIsLoading(true);
     try {
-      const babies = await getArchivedBabiesFromFirestore();
-      setArchivedBabies(babies);
+      const babies = await getArchivedBabiesFromFirestore(currentUser.uid);
+      // Sort on the client to handle potential null or undefined dates gracefully
+      const sortedBabies = babies.sort((a, b) => {
+        if (a.dateArchived && b.dateArchived) {
+          // Both dates are valid strings, so compare them
+          return new Date(b.dateArchived).getTime() - new Date(a.dateArchived).getTime();
+        }
+        if (a.dateArchived) return -1; // a is valid, b is not, so a comes first
+        if (b.dateArchived) return 1;  // b is valid, a is not, so b comes first
+        return 0; // Neither has a date, so keep original order
+      });
+      setArchivedBabies(sortedBabies);
     } catch (error) {
       console.error("Error fetching archived babies:", error);
       toast({
@@ -67,11 +89,13 @@ export default function ArchivePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, currentUser]);
 
   useEffect(() => {
-    fetchArchivedBabies();
-  }, [fetchArchivedBabies]);
+    if(currentUser) {
+      fetchArchivedBabies();
+    }
+  }, [currentUser, fetchArchivedBabies]);
 
   /**
    * Handles unarchiving a baby.

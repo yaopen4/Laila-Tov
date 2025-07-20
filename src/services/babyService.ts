@@ -19,6 +19,7 @@ import type { Baby, SleepRecord, BabyFormData, SleepRecordFormData } from '@/typ
 import { format } from 'date-fns';
 import { createInviteInFirestore } from './inviteService';
 
+export type { Baby }; // Exporting the Baby type
 const BABIES_COLLECTION = 'babies';
 const SLEEP_RECORDS_SUBCOLLECTION = 'sleepRecords';
 
@@ -54,7 +55,6 @@ export const addBabyToFirestore = async (
     description: babyData.description,
     parentUsername: babyData.parentUsername,
     coachNotes: babyData.coachNotes,
-    parentEmails: babyData.parentEmails,
     parentIds: [], // Initially empty, populated on invite redemption
     isArchived: false,
     dateArchived: null,
@@ -193,14 +193,16 @@ export const getActiveBabiesFromFirestore = async (): Promise<Baby[]> => {
 
 
 /**
- * Retrieves all archived babies from Firestore, ordered by family name.
+ * Retrieves all archived babies for a specific coach from Firestore, ordered by archive date.
+ * @param {string} coachId - The UID of the coach whose archived babies are to be fetched.
  * @returns {Promise<Baby[]>} An array of archived baby objects.
  */
-export const getArchivedBabiesFromFirestore = async (): Promise<Baby[]> => {
+export const getArchivedBabiesFromFirestore = async (coachId: string): Promise<Baby[]> => {
   const q = query(
     collection(db, BABIES_COLLECTION),
     where('isArchived', '==', true),
-    orderBy('dateArchived', 'desc')
+    where('coachId', '==', coachId)
+    // Removed: orderBy('dateArchived', 'desc') - This will be handled on the client
   );
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Baby));

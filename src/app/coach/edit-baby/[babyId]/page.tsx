@@ -15,6 +15,17 @@ import { AlertCircle, Archive as ArchiveIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function EditBabyPage() {
   const params = useParams();
@@ -163,15 +174,28 @@ export default function EditBabyPage() {
         isSubmitting={isSubmitting}
       />
       <div className="mt-8 max-w-2xl mx-auto border-t pt-6">
-        <h3 className="text-lg font-semibold text-destructive mb-2">אזור מסוכן</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-            העברת תינוק לארכיון תסיר אותו מלוח הבקרה הראשי ותמנע מההורים גישה.
-            ניתן לשחזר תינוק מהארכיון בכל עת.
-        </p>
-        <Button variant="destructive" onClick={handleArchive} disabled={isSubmitting}>
-          <ArchiveIcon className="me-2 h-4 w-4" />
-          {isSubmitting ? "מעביר לארכיון..." : "העבר את התינוק לארכיון"}
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive/5 hover:text-destructive">
+              <ArchiveIcon className="me-2 h-4 w-4" />
+              העבר את התינוק לארכיון
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>האם אתה בטוח?</AlertDialogTitle>
+              <AlertDialogDescription>
+                העברת תינוק לארכיון תסיר אותו מלוח הבקרה הראשי ותמנע מההורים גישה. ניתן לשחזר תינוק מהארכיון בכל עת.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction onClick={handleArchive} disabled={isSubmitting}>
+                {isSubmitting ? "מעביר..." : "כן, העבר לארכיון"}
+              </AlertDialogAction>
+              <AlertDialogCancel disabled={isSubmitting}>ביטול</AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
