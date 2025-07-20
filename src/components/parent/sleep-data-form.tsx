@@ -248,7 +248,7 @@ export function SleepDataForm({
                       name={`sleepCycles.${index}.timeToSleep`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="flex items-center gap-1"><Timer className="h-4 w-4" />כמה זמן עד שנרדמ/ה</FormLabel>
+                          <FormLabel className="flex items-center gap-1"><Timer className="h-4 w-4" />כמה זמן עד הרדמות</FormLabel>
                           <FormControl>
                             <Input placeholder="לדוגמה: 15 דקות, מייד" {...field} disabled={isSubmitting} />
                           </FormControl>
@@ -261,7 +261,7 @@ export function SleepDataForm({
                       name={`sleepCycles.${index}.whoPutToSleep`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="flex items-center gap-1"><UserCircle2 className="h-4 w-4" />מי הרדים/ה</FormLabel>
+                          <FormLabel className="flex items-center gap-1"><UserCircle2 className="h-4 w-4" />מי הרדים</FormLabel>
                           <FormControl>
                             <Input placeholder="לדוגמה: אמא, אבא, לבד" {...field} disabled={isSubmitting} />
                           </FormControl>
@@ -274,7 +274,7 @@ export function SleepDataForm({
                       name={`sleepCycles.${index}.howFellAsleep`}
                       render={({ field }) => (
                         <FormItem className="md:col-span-2">
-                          <FormLabel>איך נרדמ/ה</FormLabel>
+                          <FormLabel>איך נרדם</FormLabel>
                           <FormControl>
                             <Textarea placeholder="תיאור מפורט של תהליך ההרדמות..." {...field} disabled={isSubmitting} />
                           </FormControl>

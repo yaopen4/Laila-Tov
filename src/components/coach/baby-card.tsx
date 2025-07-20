@@ -60,7 +60,7 @@ const BabyCard: FC<BabyCardProps> = ({ baby }) => {
       </CardContent>
       <CardFooter className="flex flex-wrap justify-end gap-2 pt-4">
         {/* Link to view the baby's data from the parent's perspective */}
-        <Link href={`/parent/${baby.parentUsername}`} passHref legacyBehavior>
+        <Link href={`/parent/${baby.id}`} passHref legacyBehavior>
           <Button variant="outline" size="sm">
             <Eye className="me-2 h-4 w-4" />
             צפה בנתונים

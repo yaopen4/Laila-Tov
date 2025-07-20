@@ -24,7 +24,7 @@ const CoachRecommendationsDisplay: FC<CoachRecommendationsDisplayProps> = ({ not
   return (
     <Card className="mt-8 shadow-lg bg-accent/10 border-accent">
       <CardHeader>
-        <CardTitle className="text-xl flex items-center gap-2 text-accent-foreground">
+        <CardTitle className="text-xl flex items-center gap-2 text-accent-foreground dark:text-slate-200">
           <MessageSquareText className="h-5 w-5" />
           המלצות היועצת
         </CardTitle>
@@ -32,9 +32,9 @@ const CoachRecommendationsDisplay: FC<CoachRecommendationsDisplayProps> = ({ not
       <CardContent>
         {notes ? (
           // whitespace-pre-line preserves newlines from the consultant's input.
-          <p className="text-muted-foreground whitespace-pre-line">{notes}</p>
+          <p className="text-muted-foreground whitespace-pre-line dark:text-slate-200">{notes}</p>
         ) : (
-          <p className="text-muted-foreground">אין כרגע המלצות מהיועצת.</p>
+          <p className="text-muted-foreground dark:text-slate-200">אין כרגע המלצות מהיועצת.</p>
         )}
       </CardContent>
     </Card>

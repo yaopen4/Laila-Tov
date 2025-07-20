@@ -131,21 +131,25 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
               <FormField name="age" control={form.control} render={({ field }) => (
                 <FormItem><FormLabel>גיל (בחודשים)</FormLabel><FormControl><Input type="number" placeholder="גיל בחודשים" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
               )}/>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField name="motherName" control={form.control} render={({ field }) => (
                 <FormItem><FormLabel>שם האם</FormLabel><FormControl><Input placeholder="שם האם" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
               )}/>
               <FormField name="fatherName" control={form.control} render={({ field }) => (
                 <FormItem><FormLabel>שם האב</FormLabel><FormControl><Input placeholder="שם האב" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
               )}/>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField name="siblingsCount" control={form.control} render={({ field }) => (
                 <FormItem><FormLabel>מספר אחים/אחיות</FormLabel><FormControl><Input type="number" placeholder="מספר אחים/אחיות" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
               )}/>
               <FormField name="siblingsNames" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>שמות האחים/אחיות (אופציונלי)</FormLabel><FormControl><Input placeholder="לדוגמה: דני (5), רותי (3)" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>שמות האחים/אחיות</FormLabel><FormControl><Input placeholder="לדוגמה: דני (5), רותי (3)" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
               )}/>
             </div>
             <FormField name="description" control={form.control} render={({ field }) => (
-              <FormItem><FormLabel>תיאור קצר (אופציונלי)</FormLabel><FormControl><Textarea placeholder="תיאור כללי על התינוק, הרגלי שינה נוכחיים וכו'." {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
+              <FormItem><FormLabel>תיאור המצב</FormLabel><FormControl><Textarea placeholder="תיאור כללי על התינוק, הרגלי שינה נוכחיים וכו'." {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
             )}/>
             <FormField name="coachNotes" control={form.control} render={({ field }) => (
               <FormItem><FormLabel className="flex items-center gap-1"><MessageSquareText className="h-4 w-4" />הערות יועצת (יוצגו להורים)</FormLabel><FormControl><Textarea placeholder="המלצות, תוכנית פעולה, דגשים להורים..." {...field} rows={4} disabled={isSubmitting}/></FormControl><FormMessage /></FormItem>
@@ -163,10 +167,10 @@ export function AddBabyForm({ initialData, isEditMode = false, onSubmitProp, isS
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField name="parentEmail1" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel className="flex items-center gap-1"><Mail className="h-4 w-4" />אימייל הורה 1 (אופציונלי)</FormLabel><FormControl><Input type="email" placeholder="parent1@example.com" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel className="flex items-center gap-1"><Mail className="h-4 w-4" />אימייל הורה 1</FormLabel><FormControl><Input type="email" placeholder="parent1@example.com" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
               )}/>
               <FormField name="parentEmail2" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel className="flex items-center gap-1"><Mail className="h-4 w-4" />אימייל הורה 2 (אופציונלי)</FormLabel><FormControl><Input type="email" placeholder="parent2@example.com" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel className="flex items-center gap-1"><Mail className="h-4 w-4" />אימייל הורה 2</FormLabel><FormControl><Input type="email" placeholder="parent2@example.com" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
               )}/>
             </div>
             

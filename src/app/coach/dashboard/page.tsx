@@ -8,7 +8,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
+import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import type { Baby, SleepRecord, SleepCycle } from '@/types';
 import { getActiveBabiesFromFirestore, getSleepRecordsForBabyFromFirestore } from '@/services/babyService';
 import DashboardHeader from '@/components/coach/dashboard-header';
@@ -52,6 +53,7 @@ export default function CoachDashboardPage() {
   const [filteredBabies, setFilteredBabies] = useState<Baby[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const { toast } = useToast();
 
   // State for export dialog
@@ -62,11 +64,32 @@ export default function CoachDashboardPage() {
   const [isExporting, setIsExporting] = useState(false);
 
 
-  // Real-time listener for active babies
+  // Get the currently authenticated user
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+      } else {
+        // Handle user not logged in, maybe redirect or show a message
+        console.log("User is not logged in.");
+        setIsLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+
+  // Real-time listener for active babies, filtered by the current coach's ID
+  useEffect(() => {
+    if (!currentUser) {
+      return; // Wait for the user to be set
+    }
+    
     setIsLoading(true);
+
     const q = query(
       collection(db, 'babies'),
+      where('coachId', '==', currentUser.uid),
       where('isArchived', '==', false),
       orderBy('familyName'),
       orderBy('name')
@@ -99,7 +122,7 @@ export default function CoachDashboardPage() {
     );
 
     return () => unsubscribe(); // Cleanup listener on component unmount
-  }, [toast]);
+  }, [currentUser, toast]);
 
 
   // Effect to filter babies based on search term
@@ -192,9 +215,9 @@ export default function CoachDashboardPage() {
       date: 'תאריך',
       cycleNumber: 'מספר מחזור שינה',
       bedtime: 'שעת השכבה',
-      timeToSleep: 'כמה זמן עד שנרדם/ה',
-      whoPutToSleep: 'מי הרדים/ה',
-      howFellAsleep: 'איך נרדמ/ה',
+      timeToSleep: 'כמה זמן עד שנרדם',
+      whoPutToSleep: 'מי הרדים',
+      howFellAsleep: 'איך נרדם',
       wakeTime: 'שעת יקיצה'
     };
 
@@ -302,7 +325,7 @@ export default function CoachDashboardPage() {
           if (record.sleepCycles && record.sleepCycles.length > 0) {
             htmlContent += `
               <table>
-                <thead><tr><th>מחזור</th><th>שעת השכבה</th><th>זמן להירדם</th><th>מי הרדים/ה</th><th>איך נרדמ/ה</th><th>שעת יקיצה</th></tr></thead>
+                <thead><tr><th>מחזור</th><th>שעת השכבה</th><th>זמן להירדם</th><th>מי הרדים</th><th>איך נרדמ/ה</th><th>שעת יקיצה</th></tr></thead>
                 <tbody>
             `;
             record.sleepCycles.forEach((cycle, index) => {

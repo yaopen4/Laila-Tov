@@ -21,7 +21,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-import { LogOut, LayoutDashboard } from 'lucide-react';
+import { LogOut, LayoutDashboard, MailPlus } from 'lucide-react';
 import { onAuthChange, signOut as firebaseLogout, isAdminUser, type AuthUser } from '@/services/authService';
 import { useToast } from '@/hooks/use-toast';
 
@@ -40,8 +40,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       setIsLoadingAuth(false);
       if (!user || !isAdminUser(user)) {
         toast({
-            title: "Access Denied",
-            description: "You must be logged in as an administrator to view this page.",
+            title: "גישה נדחתה",
+            description: "עליך להתחבר כמנהל מערכת כדי לצפות בדף זה.",
             variant: "destructive"
         });
         router.push('/');
@@ -52,17 +52,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   // Navigation items for the admin sidebar
   const navItems = [
-    { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/admin/dashboard", label: "לוח בקרה", icon: LayoutDashboard },
+    { href: "/admin/invites", label: "ניהול הזמנות", icon: MailPlus },
   ];
 
   const handleLogout = async () => {
     try {
       await firebaseLogout();
-      toast({ title: "Successfully logged out" });
+      toast({ title: "התנתקת בהצלחה" });
       router.push('/');
     } catch (error) {
       console.error("Logout error:", error);
-      toast({ title: "Error logging out", variant: "destructive" });
+      toast({ title: "שגיאה בהתנתקות", variant: "destructive" });
     }
   };
 
@@ -103,10 +104,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <div className="p-2 mt-auto">
             <SidebarMenuButton
               onClick={handleLogout}
-              tooltip={{children: "Logout", side: 'left', align: 'center'}}
+              tooltip={{children: "התנתקות", side: 'left', align: 'center'}}
             >
               <LogOut className="h-5 w-5" />
-              <span>Logout</span>
+              <span>התנתקות</span>
             </SidebarMenuButton>
         </div>
       </Sidebar>

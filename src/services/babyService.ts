@@ -12,6 +12,7 @@ import {
   orderBy,
   Timestamp,
   writeBatch,
+  addDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Baby, SleepRecord, BabyFormData, SleepRecordFormData } from '@/types';
@@ -66,19 +67,24 @@ export const addBabyToFirestore = async (
   return babyDocRef.id;
 };
 
-
 /**
- * Retrieves a baby by its ID from Firestore.
- * @param {string} babyId - The ID of the baby.
- * @returns {Promise<Baby | null>} The baby object or null if not found.
+ * Fetches a single baby document by its unique document ID.
+ * @param {string} babyId - The unique ID of the baby document in Firestore.
+ * @returns {Promise<Baby | null>} A promise that resolves with the Baby object or null if not found.
  */
 export const getBabyByIdFromFirestore = async (babyId: string): Promise<Baby | null> => {
-  const docRef = doc(db, BABIES_COLLECTION, babyId);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return { id: docSnap.id, ...docSnap.data() } as Baby;
+  try {
+    const babyDocRef = doc(db, 'babies', babyId);
+    const docSnap = await getDoc(babyDocRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Baby;
+    }
+    console.warn(`No baby found with document ID: ${babyId}`);
+    return null;
+  } catch (error) {
+    console.error("Error fetching baby by ID:", error);
+    throw error; // Rethrow the error to be handled by the caller
   }
-  return null;
 };
 
 /**

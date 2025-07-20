@@ -58,8 +58,6 @@ export interface Baby {
   parentUsername: string;
   /** Array of Firebase Auth UIDs of the linked parents. */
   parentIds: string[];
-  /** Array of parent email addresses associated with the invite. */
-  parentEmails?: string[];
   /** Notes from the sleep consultant, visible to parents. */
   coachNotes?: string;
   /** Flag indicating if the baby's profile is archived. */
@@ -93,6 +91,7 @@ export type BabyFormData = {
   parentEmail1?: string;
   parentEmail2?: string;
   inviteCode?: string;
+  parentUsername?: string;
 };
 
 /**
@@ -127,4 +126,49 @@ export interface Invite {
   createdAt: Timestamp;
   /** Timestamp of when the invite expires (e.g., 30 days from creation). */
   expiresAt: Timestamp;
+}
+
+/**
+ * Defines the roles a user can have within the application.
+ */
+export type UserRole = 'admin' | 'coach' | 'parent';
+
+/**
+ * Represents a user document in the 'users' collection. This is the single source of truth for user identity.
+ */
+export interface User {
+  /** The user's unique Firebase Authentication UID. This is the document ID. */
+  id: string;
+  /** The user's primary email address. */
+  email: string;
+  /** The user's display name. */
+  name: string;
+  /** The assigned role for the user, which governs their permissions. */
+  role: UserRole;
+  /** The user's current status (e.g., active, disabled). */
+  status: 'active' | 'disabled';
+  /** Timestamp of the last login. */
+  lastLogin?: Timestamp;
+}
+
+/**
+ * Represents a coach's profile document in the 'coaches' collection.
+ * This stores data specific to a coach's professional activities.
+ */
+export interface CoachProfile {
+  /** The coach's unique Firebase Authentication UID. This is the document ID. */
+  id: string;
+  /** The number of active clients the coach is currently managing. */
+  clientCount: number;
+  // Future fields could include: bio, certifications, etc.
+}
+
+/**
+ * Represents a parent's profile document in the 'parents' collection.
+ * This can be expanded with parent-specific information in the future.
+ */
+export interface ParentProfile {
+  /** The parent's unique Firebase Authentication UID. This is the document ID. */
+  id: string;
+  // Future fields could include: communication preferences, etc.
 }

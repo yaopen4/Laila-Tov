@@ -12,6 +12,7 @@ import { onSnapshot, doc, collection, query, orderBy, Timestamp } from 'firebase
 import { db } from '@/lib/firebase';
 import type { Baby, SleepRecord, SleepRecordFormData } from '@/types';
 import { 
+  getBabyByIdFromFirestore, // Using this new function for direct ID lookup
   getBabyByParentUsernameFromFirestore, 
   addSleepRecordToFirestore,
   updateSleepRecordInFirestore,
@@ -46,7 +47,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { onAuthChange, logout as firebaseLogout, isParentUser, isCoachUser, type AuthUser } from '@/services/authService';
+import { onAuthChange, signOut as firebaseLogout, isParentUser, isCoachUser, type AuthUser } from '@/services/authService';
 import { Skeleton } from '@/components/ui/skeleton';
 
 
@@ -76,19 +77,29 @@ export default function ParentBabyPage() {
       setCurrentUser(user);
       setIsAuthLoading(false);
       if (user) {
-        if (isCoachUser(user) || isParentUser(user, babyId)) {
-          // User is authorized
+        // A coach is authorized if they are a coach.
+        // A parent is authorized if their linked babyId matches the one in the URL.
+        const isAuthorized = isCoachUser(user) || isParentUser(user, babyId);
+
+        if (isAuthorized) {
           setIsLoading(true);
           try {
-            const foundBaby = await getBabyByParentUsernameFromFirestore(babyId);
+            let foundBaby: Baby | null = null;
+            if (isCoachUser(user)) {
+              // If the user is a coach, the babyId in the URL is the direct document ID.
+              foundBaby = await getBabyByIdFromFirestore(babyId);
+            } else {
+              // If the user is a parent, the babyId in the URL is the parentUsername.
+              foundBaby = await getBabyByParentUsernameFromFirestore(babyId);
+            }
+
             if (foundBaby) {
               setBaby(foundBaby);
-              // Initial fetch of sleep records, listener will take over for updates
-              // const records = await getSleepRecordsForBabyFromFirestore(foundBaby.id);
-              // setSleepRecords(records); // Listener below will handle this
             } else {
-              setBaby(null); // Baby not found for this parentUsername
-              if (!isCoachUser(user)) { // If parent and baby not found, logout. Coach can see "not found"
+              setBaby(null); 
+              // If a parent can't find their baby, something is wrong. Log them out.
+              // A coach might legitimately land here if they have a bad link, so don't log them out.
+              if (isParentUser(user)) {
                 await firebaseLogout();
                 router.push('/');
               }
@@ -100,8 +111,8 @@ export default function ParentBabyPage() {
             setIsLoading(false);
           }
         } else {
-          // Not authorized for this babyId
-          await firebaseLogout(); // Logout if trying to access unauthorized page
+          // Not authorized for this page
+          await firebaseLogout(); 
           router.push('/');
         }
       } else {
