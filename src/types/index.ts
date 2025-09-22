@@ -114,8 +114,10 @@ export interface Invite {
   babyData?: BabyFormData;
   /** Array of email addresses of the intended users. Can be empty. */
   parentEmails: string[];
+  /** Array of email addresses for coach invites. */
+  invitedEmails?: string[];
   /** Status of the invite. */
-  status: 'pending' | 'partially_redeemed' | 'completed' | 'expired';
+  status: 'pending' | 'partially_redeemed' | 'completed' | 'expired' | 'revoked';
   /** Array of users who have redeemed this invite. */
   usedBy: Array<{
     userId: string; // Firebase Auth UID of the user
@@ -126,6 +128,8 @@ export interface Invite {
   createdAt: Timestamp;
   /** Timestamp of when the invite expires (e.g., 30 days from creation). */
   expiresAt: Timestamp;
+  /** Array of placeholder user IDs created for this invite. */
+  placeholderUserIds?: string[];
 }
 
 /**
@@ -171,4 +175,124 @@ export interface ParentProfile {
   /** The parent's unique Firebase Authentication UID. This is the document ID. */
   id: string;
   // Future fields could include: communication preferences, etc.
+}
+
+/**
+ * Log levels for different types of events
+ */
+export enum LogLevel {
+  DEBUG = 'debug',
+  INFO = 'info',
+  WARN = 'warn',
+  ERROR = 'error',
+  CRITICAL = 'critical'
+}
+
+/**
+ * Event categories for audit trails
+ */
+export enum EventCategory {
+  AUTHENTICATION = 'authentication',
+  USER_MANAGEMENT = 'user_management',
+  BABY_MANAGEMENT = 'baby_management',
+  SLEEP_DATA = 'sleep_data',
+  INVITATION = 'invitation',
+  SYSTEM = 'system',
+  SECURITY = 'security',
+  PERFORMANCE = 'performance'
+}
+
+/**
+ * Base log entry interface
+ */
+export interface LogEntry {
+  timestamp: Date;
+  level: LogLevel;
+  message: string;
+  category?: EventCategory;
+  userId?: string;
+  userEmail?: string;
+  userRole?: string;
+  sessionId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: Record<string, any>;
+  error?: {
+    name: string;
+    message: string;
+    stack?: string;
+  };
+}
+
+/**
+ * Audit event types for detailed tracking
+ */
+export enum AuditEventType {
+  // Authentication events
+  LOGIN_SUCCESS = 'login_success',
+  LOGIN_FAILED = 'login_failed',
+  LOGOUT = 'logout',
+  PASSWORD_RESET_REQUEST = 'password_reset_request',
+  PASSWORD_RESET_SUCCESS = 'password_reset_success',
+  SIGNUP_SUCCESS = 'signup_success',
+  SIGNUP_FAILED = 'signup_failed',
+  
+  // User management events
+  USER_CREATED = 'user_created',
+  USER_UPDATED = 'user_updated',
+  USER_DELETED = 'user_deleted',
+  ROLE_ASSIGNED = 'role_assigned',
+  ROLE_CHANGED = 'role_changed',
+  
+  // Baby management events
+  BABY_CREATED = 'baby_created',
+  BABY_UPDATED = 'baby_updated',
+  BABY_ARCHIVED = 'baby_archived',
+  BABY_RESTORED = 'baby_restored',
+  BABY_DELETED = 'baby_deleted',
+  
+  // Sleep data events
+  SLEEP_RECORD_CREATED = 'sleep_record_created',
+  SLEEP_RECORD_UPDATED = 'sleep_record_updated',
+  SLEEP_RECORD_DELETED = 'sleep_record_deleted',
+  
+  // Invitation events
+  INVITATION_CREATED = 'invitation_created',
+  INVITATION_REDEEMED = 'invitation_redeemed',
+  INVITATION_CANCELLED = 'invitation_cancelled',
+  INVITATION_EXPIRED = 'invitation_expired',
+  
+  // System events
+  DATA_EXPORT = 'data_export',
+  BULK_OPERATION = 'bulk_operation',
+  SYSTEM_ERROR = 'system_error',
+  
+  // Security events
+  UNAUTHORIZED_ACCESS = 'unauthorized_access',
+  PERMISSION_DENIED = 'permission_denied',
+  SUSPICIOUS_ACTIVITY = 'suspicious_activity'
+}
+
+/**
+ * Audit log entry interface for sensitive operations
+ */
+export interface AuditLogEntry extends LogEntry {
+  eventType: AuditEventType;
+  resourceId?: string;
+  resourceType?: string;
+  oldValue?: any;
+  newValue?: any;
+  success: boolean;
+  duration?: number;
+}
+
+/**
+ * Performance metrics interface
+ */
+export interface PerformanceMetric {
+  timestamp: Date;
+  operation: string;
+  duration: number;
+  userId?: string;
+  metadata?: Record<string, any>;
 }

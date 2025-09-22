@@ -1,0 +1,512 @@
+// types/permissions.ts
+
+// Granular permission system
+export interface Permission {
+  id: string;
+  name: string;
+  description: string;
+  category: 'user_management' | 'data_access' | 'baby_management' | 'system' | 'reporting';
+  level: 'read' | 'write' | 'admin';
+  dependencies?: string[]; // Required permissions
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  organizationId: string;
+  isSystemRole: boolean; // Cannot be modified
+  isActive: boolean;
+  permissions: string[]; // Permission IDs
+  constraints?: RoleConstraints;
+  createdAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
+  createdBy: string;
+}
+
+export interface RoleConstraints {
+  maxBabyProfiles?: number;
+  maxParentInvitations?: number;
+  dataRetentionDays?: number;
+  allowExport?: boolean;
+  restrictedTimeAccess?: {
+    startTime: string; // "09:00"
+    endTime: string;   // "17:00"
+    daysOfWeek: number[]; // [1,2,3,4,5] for weekdays
+  };
+}
+
+// Enhanced user model with role assignments
+export interface UserRoleAssignment {
+  userId: string;
+  roleId: string;
+  organizationId: string;
+  assignedBy: string;
+  assignedAt: FirebaseFirestore.Timestamp;
+  expiresAt?: FirebaseFirestore.Timestamp;
+  isActive: boolean;
+  context?: {
+    babyProfileIds?: string[];
+    departmentId?: string;
+    territoryId?: string;
+  };
+}
+
+// services/roleService.ts
+export class RoleService {
+  
+  /**
+   * Define all available permissions in the system
+   */
+  private static readonly SYSTEM_PERMISSIONS: Permission[] = [
+    // User Management
+    {
+      id: 'users.create',
+      name: 'Create Users',
+      description: 'Create new user accounts',
+      category: 'user_management',
+      level: 'write'
+    },
+    {
+      id: 'users.read.all',
+      name: 'View All Users',
+      description: 'View all users in organization',
+      category: 'user_management',
+      level: 'read'
+    },
+    {
+      id: 'users.read.assigned',
+      name: 'View Assigned Users',
+      description: 'View users assigned to current user',
+      category: 'user_management',
+      level: 'read'
+    },
+    {
+      id: 'users.update.all',
+      name: 'Edit All Users',
+      description: 'Edit any user profile',
+      category: 'user_management',
+      level: 'write',
+      dependencies: ['users.read.all']
+    },
+    {
+      id: 'users.deactivate',
+      name: 'Deactivate Users',
+      description: 'Deactivate user accounts',
+      category: 'user_management',
+      level: 'admin',
+      dependencies: ['users.read.all']
+    },
+
+    // Baby Management
+    {
+      id: 'babies.create',
+      name: 'Create Baby Profiles',
+      description: 'Create new baby profiles',
+      category: 'baby_management',
+      level: 'write'
+    },
+    {
+      id: 'babies.read.all',
+      name: 'View All Baby Profiles',
+      description: 'View all baby profiles in organization',
+      category: 'baby_management',
+      level: 'read'
+    },
+    {
+      id: 'babies.read.assigned',
+      name: 'View Assigned Baby Profiles',
+      description: 'View baby profiles assigned to current user',
+      category: 'baby_management',
+      level: 'read'
+    },
+    {
+      id: 'babies.update.assigned',
+      name: 'Edit Assigned Baby Profiles',
+      description: 'Edit baby profiles assigned to current user',
+      category: 'baby_management',
+      level: 'write',
+      dependencies: ['babies.read.assigned']
+    },
+    {
+      id: 'babies.archive',
+      name: 'Archive Baby Profiles',
+      description: 'Archive completed baby profiles',
+      category: 'baby_management',
+      level: 'admin',
+      dependencies: ['babies.read.assigned']
+    },
+
+    // Data Access
+    {
+      id: 'sleep_data.read.assigned',
+      name: 'View Assigned Sleep Data',
+      description: 'View sleep data for assigned babies',
+      category: 'data_access',
+      level: 'read'
+    },
+    {
+      id: 'sleep_data.write.assigned',
+      name: 'Edit Assigned Sleep Data',
+      description: 'Create and edit sleep data for assigned babies',
+      category: 'data_access',
+      level: 'write',
+      dependencies: ['sleep_data.read.assigned']
+    },
+    {
+      id: 'sleep_data.read.all',
+      name: 'View All Sleep Data',
+      description: 'View all sleep data in organization',
+      category: 'data_access',
+      level: 'read'
+    },
+
+    // Reporting
+    {
+      id: 'reports.generate.assigned',
+      name: 'Generate Reports for Assigned',
+      description: 'Generate reports for assigned babies',
+      category: 'reporting',
+      level: 'read',
+      dependencies: ['sleep_data.read.assigned']
+    },
+    {
+      id: 'reports.generate.all',
+      name: 'Generate All Reports',
+      description: 'Generate reports for all organization data',
+      category: 'reporting',
+      level: 'read',
+      dependencies: ['sleep_data.read.all']
+    },
+    {
+      id: 'reports.export',
+      name: 'Export Reports',
+      description: 'Export reports as PDF/Excel files',
+      category: 'reporting',
+      level: 'write'
+    },
+
+    // System Administration
+    {
+      id: 'system.manage_roles',
+      name: 'Manage Roles',
+      description: 'Create and modify user roles',
+      category: 'system',
+      level: 'admin'
+    },
+    {
+      id: 'system.manage_organization',
+      name: 'Manage Organization',
+      description: 'Modify organization settings',
+      category: 'system',
+      level: 'admin'
+    },
+    {
+      id: 'system.view_audit_logs',
+      name: 'View Audit Logs',
+      description: 'Access system audit logs',
+      category: 'system',
+      level: 'read'
+    },
+    {
+      id: 'system.manage_invitations',
+      name: 'Manage Invitations',
+      description: 'Create and manage user invitations',
+      category: 'system',
+      level: 'write'
+    }
+  ];
+
+  /**
+   * System-defined roles that cannot be modified
+   */
+  private static readonly SYSTEM_ROLES = {
+    admin: {
+      name: 'admin',
+      displayName: 'System Administrator',
+      description: 'Full system access with all permissions',
+      permissions: [
+        'users.create', 'users.read.all', 'users.update.all', 'users.deactivate',
+        'babies.create', 'babies.read.all', 'babies.update.assigned', 'babies.archive',
+        'sleep_data.read.all', 'sleep_data.write.assigned',
+        'reports.generate.all', 'reports.export',
+        'system.manage_roles', 'system.manage_organization', 
+        'system.view_audit_logs', 'system.manage_invitations'
+      ]
+    },
+    coach: {
+      name: 'coach',
+      displayName: 'Sleep Coach',
+      description: 'Professional sleep consultant with client management capabilities',
+      permissions: [
+        'users.read.assigned',
+        'babies.create', 'babies.read.assigned', 'babies.update.assigned', 'babies.archive',
+        'sleep_data.read.assigned', 'sleep_data.write.assigned',
+        'reports.generate.assigned', 'reports.export',
+        'system.manage_invitations'
+      ],
+      constraints: {
+        maxBabyProfiles: 50,
+        maxParentInvitations: 10,
+        allowExport: true
+      }
+    },
+    parent: {
+      name: 'parent',
+      displayName: 'Parent',
+      description: 'Parent with access to own baby data',
+      permissions: [
+        'babies.read.assigned',
+        'sleep_data.read.assigned', 'sleep_data.write.assigned',
+        'reports.generate.assigned'
+      ],
+      constraints: {
+        maxBabyProfiles: 5,
+        allowExport: false
+      }
+    }
+  };
+
+  /**
+   * Check if user has specific permission
+   */
+  static async userHasPermission(
+    userId: string, 
+    permission: string,
+    context?: { babyProfileId?: string; organizationId?: string }
+  ): Promise<boolean> {
+    try {
+      // Get user's role assignments
+      const userDoc = await admin.firestore()
+        .collection('users')
+        .doc(userId)
+        .get();
+      
+      if (!userDoc.exists) return false;
+      
+      const user = userDoc.data() as User;
+      
+      // Get user's active role assignments
+      const roleAssignments = await admin.firestore()
+        .collection('user_role_assignments')
+        .where('userId', '==', userId)
+        .where('isActive', '==', true)
+        .where('organizationId', '==', context?.organizationId || user.organizationId)
+        .get();
+      
+      // Check each role for the permission
+      for (const assignmentDoc of roleAssignments.docs) {
+        const assignment = assignmentDoc.data() as UserRoleAssignment;
+        
+        // Check if assignment has expired
+        if (assignment.expiresAt && assignment.expiresAt.toDate() < new Date()) {
+          continue;
+        }
+        
+        // Get role details
+        const roleDoc = await admin.firestore()
+          .collection('roles')
+          .doc(assignment.roleId)
+          .get();
+        
+        if (!roleDoc.exists) continue;
+        
+        const role = roleDoc.data() as Role;
+        
+        if (role.permissions.includes(permission)) {
+          // Check context constraints if applicable
+          if (context?.babyProfileId && assignment.context?.babyProfileIds) {
+            return assignment.context.babyProfileIds.includes(context.babyProfileId);
+          }
+          return true;
+        }
+      }
+      
+      return false;
+      
+    } catch (error) {
+      console.error('Error checking user permission:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Assign role to user with optional context
+   */
+  static async assignRoleToUser(params: {
+    userId: string;
+    roleId: string;
+    organizationId: string;
+    assignedBy: string;
+    expiresAt?: Date;
+    context?: {
+      babyProfileIds?: string[];
+      departmentId?: string;
+    };
+  }): Promise<void> {
+    const assignment: UserRoleAssignment = {
+      userId: params.userId,
+      roleId: params.roleId,
+      organizationId: params.organizationId,
+      assignedBy: params.assignedBy,
+      assignedAt: admin.firestore.Timestamp.now(),
+      expiresAt: params.expiresAt ? 
+        admin.firestore.Timestamp.fromDate(params.expiresAt) : undefined,
+      isActive: true,
+      context: params.context
+    };
+    
+    const assignmentRef = admin.firestore()
+      .collection('user_role_assignments')
+      .doc();
+    
+    await assignmentRef.set(assignment);
+    
+    // Update user's cached permissions
+    await this.updateUserPermissionsCache(params.userId);
+    
+    // Log the role assignment
+    await AuditLogger.log({
+      action: 'role_assigned',
+      userId: params.assignedBy,
+      targetUserId: params.userId,
+      details: {
+        roleId: params.roleId,
+        organizationId: params.organizationId,
+        context: params.context
+      }
+    });
+  }
+
+  /**
+   * Create custom role
+   */
+  static async createCustomRole(params: {
+    name: string;
+    displayName: string;
+    description: string;
+    organizationId: string;
+    permissions: string[];
+    constraints?: RoleConstraints;
+    createdBy: string;
+  }): Promise<string> {
+    // Validate permissions exist
+    const validPermissions = this.SYSTEM_PERMISSIONS.map(p => p.id);
+    const invalidPermissions = params.permissions.filter(p => !validPermissions.includes(p));
+    
+    if (invalidPermissions.length > 0) {
+      throw new Error(`Invalid permissions: ${invalidPermissions.join(', ')}`);
+    }
+    
+    // Check permission dependencies
+    await this.validatePermissionDependencies(params.permissions);
+    
+    const roleRef = admin.firestore().collection('roles').doc();
+    
+    const role: Role = {
+      id: roleRef.id,
+      name: params.name.toLowerCase().replace(/\s+/g, '_'),
+      displayName: params.displayName,
+      description: params.description,
+      organizationId: params.organizationId,
+      isSystemRole: false,
+      isActive: true,
+      permissions: params.permissions,
+      constraints: params.constraints,
+      createdAt: admin.firestore.Timestamp.now(),
+      updatedAt: admin.firestore.Timestamp.now(),
+      createdBy: params.createdBy
+    };
+    
+    await roleRef.set(role);
+    
+    await AuditLogger.log({
+      action: 'role_created',
+      userId: params.createdBy,
+      details: {
+        roleId: roleRef.id,
+        roleName: params.name,
+        permissions: params.permissions
+      }
+    });
+    
+    return roleRef.id;
+  }
+
+  /**
+   * Validate permission dependencies
+   */
+  private static async validatePermissionDependencies(permissions: string[]): Promise<void> {
+    for (const permission of permissions) {
+      const permissionDef = this.SYSTEM_PERMISSIONS.find(p => p.id === permission);
+      if (permissionDef?.dependencies) {
+        for (const dependency of permissionDef.dependencies) {
+          if (!permissions.includes(dependency)) {
+            throw new Error(
+              `Permission '${permission}' requires '${dependency}' permission`
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Update user's cached permissions in custom claims
+   */
+  private static async updateUserPermissionsCache(userId: string): Promise<void> {
+    const permissions = await this.getUserPermissions(userId);
+    
+    await admin.auth().setCustomUserClaims(userId, {
+      permissions: permissions,
+      lastUpdated: Date.now()
+    });
+  }
+
+  /**
+   * Get all permissions for a user across all roles
+   */
+  private static async getUserPermissions(userId: string): Promise<string[]> {
+    const userDoc = await admin.firestore()
+      .collection('users')
+      .doc(userId)
+      .get();
+    
+    if (!userDoc.exists) return [];
+    
+    const user = userDoc.data() as User;
+    
+    // Get active role assignments
+    const assignments = await admin.firestore()
+      .collection('user_role_assignments')
+      .where('userId', '==', userId)
+      .where('isActive', '==', true)
+      .where('organizationId', '==', user.organizationId)
+      .get();
+    
+    const allPermissions = new Set<string>();
+    
+    for (const assignmentDoc of assignments.docs) {
+      const assignment = assignmentDoc.data() as UserRoleAssignment;
+      
+      // Skip expired assignments
+      if (assignment.expiresAt && assignment.expiresAt.toDate() < new Date()) {
+        continue;
+      }
+      
+      // Get role permissions
+      const roleDoc = await admin.firestore()
+        .collection('roles')
+        .doc(assignment.roleId)
+        .get();
+      
+      if (roleDoc.exists) {
+        const role = roleDoc.data() as Role;
+        role.permissions.forEach(permission => allPermissions.add(permission));
+      }
+    }
+    
+    return Array.from(allPermissions);
+  }
+}

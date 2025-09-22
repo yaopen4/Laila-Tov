@@ -7,13 +7,10 @@ This document outlines the features available in the application, based on the c
 
 ## Unfinished / Future Features
 
-### Current Issue
-- [ ] Creating a new baby
-
 ### Phase 1
 - [ ] Buy domain  
 - [ ] Make a website  
-- [ ] Parent invite system  image.pngackend  
+- [ ] Parent invite system 
 
 ### Phase 2
 - [ ] Recovery mechanism  
@@ -31,14 +28,19 @@ This document outlines the features available in the application, based on the c
 - [ ] Security  
 - [ ] create and manage separate invite codes for 'coach' and 'parent' roles, accessible only by admin
 
+### QA 
+- [ ] 2 coaches 
+- [ ] 2 parents same baby
+- [ ] 
+
 ---
 
 ## Completed Features  
 ([V] = Completed, [C] = Check/Confirm)
 
 ### Core & Authentication
-- [V] User login for registered coaches and parents  
 - [ ] New coach registration through a popup dialog, pending admin approval  
+- [V] User login for registered coaches and parents  
 - [V] Parent sign-up process is handled by redeeming a unique invite code  
 - [V] System-wide dark mode support with a theme toggle button  
 - [V] Toast notifications for user actions and system feedback  
@@ -61,3 +63,10 @@ This document outlines the features available in the application, based on the c
 - [V] View a history of all previously submitted sleep records  
 - [V] See read-only recommendations and notes posted by their consultant  
 - [V] View the baby's page, which is also accessible to the linked coach for data review  
+
+### Admin Functionality
+- [V] under the "הזמנות קיימות" status column, give the admin the power to revoke an invitaion. 
+- [V] after opening the page of a coach data, let the admin get into the baby's bage by clicking on the baby's name.
+- [V] make the default invitaion for coach 
+- [V] Ensure that when an invitation code is generated in Firebase, a placeholder user record is created in the database with the assigned role ("parent" or "coach") and associated email. The invitation code must be valid only for that email, expire after one use or after 30 days, and assign the correct role upon successful sign-up. During sign-up, validate the provided email and code before activating the user account and granting access to the app.
+- [V] make all the necesary changes to the firestore rules so all the admin functionality works. keep in mind the @User Access.md file and try to make as little changes to the firestore rules as possible.

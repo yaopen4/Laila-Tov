@@ -23,6 +23,15 @@ service cloud.firestore {
     }
     
     /**
+     * Checks if the user document exists.
+     * @param userId The UID of the user.
+     * @return True if the user document exists.
+     */
+    function userExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+    
+    /**
      * Checks if the requesting user has a specific role.
      * @param role The role to check for (e.g., 'admin').
      * @return True if the user has the specified role.
@@ -46,12 +55,19 @@ service cloud.firestore {
     // USERS
     // Defines access rules for user profile documents.
     match /users/{userId} {
-      // Admins can read/update any user. Users can read/update their own profile.
-      allow read, update: if isUser(userId) || isRole('admin');
-      // Any authenticated session can create a user document (for signup).
-      allow create: if isAuthenticated();
-      // Only admins can delete users.
-      allow delete: if isRole('admin');
+      // Users can read/update their own profile. Admins can read/update any user (checked in app logic).
+      allow read, update: if isUser(userId) || (userExists(request.auth.uid) && isRole('admin'));
+      
+      // User creation rules - simplified to avoid chicken-and-egg problems
+      allow create: if isAuthenticated() && (
+        // Any authenticated user can create their own user document during registration
+        isUser(userId) ||
+        // Allow placeholder users to be created (for invitation system)
+        userId.matches('placeholder_.*')
+      );
+      
+      // Deletion requires admin role (checked safely only if user doc exists)
+      allow delete: if userExists(request.auth.uid) && isRole('admin');
     }
 
     // INVITES
@@ -61,17 +77,36 @@ service cloud.firestore {
       // Assumes frontend handles anonymous sign-in for new users.
       allow read: if isAuthenticated();
       // Admins and coaches can create new invites.
-      allow create: if isRole('admin') || isRole('coach');
-      // An authenticated user can update an invite to redeem it, but only once.
-      // This is also used by a parent to link their account to a baby.
-      allow update: if isAuthenticated() && resource.data.redeemed == false;
+      // Using direct check instead of isRole function to avoid potential issues
+      allow create: if isAuthenticated() && 
+                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach');
+      // Allow updates for:
+      // 1. Parents redeeming invites (usedBy and status fields only)
+      // 2. Admins managing invites (all fields for revocation, etc.)
+      allow update: if isAuthenticated() && (
+        // Parents can update usedBy and status during redemption
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['usedBy', 'status']) ||
+        // Admins can update any field for invite management (using direct check like create rule)
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+      // Only admins can delete invites (using direct check for consistency)
+      allow delete: if isAuthenticated() && 
+                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // BABIES
     // Defines access rules for baby profiles and their subcollections.
     match /babies/{babyId} {
-      // A baby profile can only be created by a coach.
-      allow create: if isRole('coach');
+      // A baby profile can be created by coaches or admins.
+      // Using direct check for consistent permission checking
+      allow create: if isAuthenticated() && 
+                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach' ||
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
       
       // Admins, the assigned coach, or linked parents can read a baby's profile.
       allow read: if isRole('admin') 
@@ -109,6 +144,41 @@ service cloud.firestore {
                       || get(/databases/$(database)/documents/babies/$(babyId)).data.coachId == request.auth.uid
                       || request.auth.uid in get(/databases/$(database)/documents/babies/$(babyId)).data.parentIds;
       }
+    }
+
+    // COACHES
+    // Defines access rules for coach profile documents.
+    match /coaches/{coachId} {
+      // A coach can read and update their own profile. Admins can read any coach profile.
+      allow read: if isUser(coachId) || (userExists(request.auth.uid) && isRole('admin'));
+      // A coach can create their own profile document during registration.
+      allow create: if isUser(coachId);
+      // A coach can update their own profile. Admins can update any coach profile.
+      allow update: if isUser(coachId) || (userExists(request.auth.uid) && isRole('admin'));
+      // Only admins can delete coach profiles.
+      allow delete: if userExists(request.auth.uid) && isRole('admin');
+    }
+
+    // LOGS
+    // Defines access rules for application logs.
+    match /logs/{logId} {
+      // Only the system can create logs (authenticated users with valid sessions)
+      allow create: if isAuthenticated();
+      // Only admins can read logs
+      allow read: if isRole('admin');
+      // No updates or deletes allowed for logs (immutable)
+      allow update, delete: if false;
+    }
+
+    // AUDIT LOGS
+    // Defines access rules for audit trail logs.
+    match /auditLogs/{auditLogId} {
+      // Only the system can create audit logs (authenticated users with valid sessions)
+      allow create: if isAuthenticated();
+      // Only admins can read audit logs
+      allow read: if isRole('admin');
+      // No updates or deletes allowed for audit logs (immutable)
+      allow update, delete: if false;
     }
   }
 }

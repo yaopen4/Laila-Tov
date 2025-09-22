@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardDescription, CardFooter } from "@/co
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
-import { loginWithEmail, type AuthUser } from '@/services/authService';
+import { loginWithEmail, sendPasswordReset, type AuthUser } from '@/services/authService';
 import { Separator } from '../ui/separator';
 
 
@@ -93,6 +93,23 @@ const LoginForm: FC = () => {
     }
   };
 
+  const handlePasswordReset = async () => {
+    if (!email) {
+      toast({ title: "צריך אימייל", description: "הכנס אימייל לשחזור סיסמה.", variant: "destructive" });
+      return;
+    }
+    try {
+      await sendPasswordReset(email);
+      toast({ title: "קישור לאיפוס נשלח", description: "בדוק את תיבת הדואר שלך." });
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      let message = 'אירעה שגיאה בשליחת קישור האיפוס.';
+      if (error.code === 'auth/invalid-email') message = 'כתובת האימייל אינה תקינה.';
+      if (error.code === 'auth/user-not-found') message = 'לא נמצא משתמש עם אימייל זה.';
+      toast({ title: "שגיאה", description: message, variant: "destructive" });
+    }
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-br from-background to-accent/10">
       <Card className="w-full max-w-md shadow-2xl">
@@ -133,6 +150,9 @@ const LoginForm: FC = () => {
                 {isLoading ? "מתחבר..." : "התחבר"}
                 {!isLoading && <LogIn className="ms-2 h-4 w-4" />}
             </Button>
+            <button type="button" onClick={handlePasswordReset} className="w-full text-sm text-primary hover:underline mt-2">
+              שכחת סיסמה?
+            </button>
             </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-4 pt-6">

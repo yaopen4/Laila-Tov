@@ -2,31 +2,116 @@
  * @fileoverview Page for coaches to create a new baby profile.
  * This page uses the AddBabyForm component to capture baby details.
  * It then calls a service to create the baby and a corresponding invite in Firestore.
+ * Includes enhanced error handling and authentication diagnostics.
  */
 "use client";
 import { AddBabyForm, type BabyFormData } from "@/components/coach/add-baby-form";
 import { addBabyToFirestore, isParentUsernameTakenInFirestore } from "@/services/babyService";
-import { getCurrentUser } from "@/services/authService";
+import { getCurrentUser, upsertUserDocument } from "@/services/authService";
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
+import { getAuth } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export default function AddBabyPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [coachUid, setCoachUid] = useState<string | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
-      const user = await getCurrentUser();
-      if (user && user.role === 'coach') {
-        setCoachUid(user.uid);
-      } else {
-        router.push('/coach/dashboard');
-         toast({
-          title: "גישה נדחתה",
-          description: "עליך להיות מחובר כיועצת כדי ליצור פרופילי תינוקות.",
+      try {
+        const user = await getCurrentUser();
+        
+        // Enhanced debugging
+        console.log('Current user:', {
+          uid: user?.uid,
+          email: user?.email,
+          role: user?.role,
+          status: user?.status
+        });
+        
+        if (user && user.role === 'coach') {
+          setCoachUid(user.uid);
+          setAuthError(null);
+          
+          // Verify user document exists in Firestore
+          const auth = getAuth();
+          const firebaseUser = auth.currentUser;
+          if (firebaseUser) {
+            console.log('Firebase Auth user:', {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email
+            });
+            
+            // Test direct Firestore access
+            try {
+              const userDocRef = doc(db, 'users', firebaseUser.uid);
+              const userDocSnap = await getDoc(userDocRef);
+              console.log('Direct Firestore user doc check:', {
+                exists: userDocSnap.exists(),
+                data: userDocSnap.exists() ? userDocSnap.data() : null
+              });
+            } catch (fsError) {
+              console.error('Failed to read user doc directly:', fsError);
+            }
+          }
+        } else if (user && !user.role) {
+          // User exists but has no role - try to fix it
+          toast({
+            title: "מתקן הרשאות...",
+            description: "מזוהה בעיה בהרשאות. מנסה לתקן...",
+          });
+          
+          const auth = getAuth();
+          const firebaseUser = auth.currentUser;
+          if (firebaseUser) {
+            try {
+              console.log('Attempting to fix user role for:', firebaseUser.uid);
+              const fixed = await upsertUserDocument(firebaseUser, { role: 'coach' });
+              console.log('Fixed user document:', fixed);
+              
+              if (fixed.role === 'coach') {
+                setCoachUid(firebaseUser.uid);
+                setAuthError(null);
+                toast({
+                  title: "הרשאות תוקנו!",
+                  description: "כעת תוכל ליצור פרופילי תינוקות.",
+                });
+                return;
+              }
+            } catch (fixError) {
+              console.error('Error fixing user role:', fixError);
+            }
+          }
+          
+          setAuthError("אין הרשאה ליצור פרופילי תינוקות - תפקיד המשתמש לא מוגדר כיועצת");
+          router.push('/coach/dashboard');
+          toast({
+            title: "שגיאה בתיקון הרשאות",
+            description: "לא ניתן לתקן את הרשאות המשתמש. אנא פנה לתמיכה.",
+            variant: "destructive",
+          });
+        } else {
+          const errorMsg = user ? `המשתמש אינו מוגדר כיועצת (role: ${user.role})` : "המשתמש אינו מחובר";
+          setAuthError(errorMsg);
+          router.push('/coach/dashboard');
+          toast({
+            title: "גישה נדחתה",
+            description: "עליך להיות מחובר כיועצת כדי ליצור פרופילי תינוקות.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error('Error in fetchUser:', error);
+        setAuthError("שגיאה בבדיקת הרשאות המשתמש");
+        toast({
+          title: "שגיאת אימות",
+          description: "אירעה שגיאה בבדיקת ההרשאות. אנא נסה שוב.",
           variant: "destructive",
         });
       }
@@ -52,6 +137,24 @@ export default function AddBabyPage() {
     }
 
     try {
+      // Verify user document exists and has coach role before proceeding
+      console.log('Verifying coach permissions for:', coachUid);
+      const currentUser = await getCurrentUser();
+      if (!currentUser || currentUser.role !== 'coach') {
+        console.error('User verification failed:', {
+          exists: !!currentUser,
+          role: currentUser?.role,
+          uid: currentUser?.uid
+        });
+        toast({
+          title: "שגיאת הרשאות",
+          description: "אין לך הרשאה ליצור פרופילי תינוקות. ודא שאתה מחובר כיועצת.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      console.log('Coach verification successful');
       // Auto-generate a unique parentUsername for the baby document ID
       const parentUsername = `${values.name.toLowerCase().replace(/\s+/g, '-')}-${values.familyName.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
       
@@ -69,9 +172,29 @@ export default function AddBabyPage() {
       // Filter out empty strings from parent emails
       const parentEmails = [values.parentEmail1, values.parentEmail2].filter((email): email is string => !!email);
 
-      const babyDataForCreation = { ...values, parentUsername, parentEmails };
+      // Construct the complete baby data object for creation
+      const babyDataForCreation = {
+        name: values.name,
+        familyName: values.familyName,
+        age: values.age,
+        motherName: values.motherName,
+        fatherName: values.fatherName,
+        siblingsCount: values.siblingsCount,
+        siblingsNames: values.siblingsNames || "",
+        description: values.description || "",
+        parentUsername: parentUsername,
+        coachNotes: values.coachNotes || "",
+        // These fields are required by the Baby type but are set by the service
+        // or initialized to a default state.
+        coachId: coachUid,
+        parentIds: [],
+        isArchived: false,
+        dateArchived: null,
+        lastModified: "", // Will be set by the service
+        inviteCode: "", // Will be set by the service
+      };
 
-      await addBabyToFirestore(babyDataForCreation, coachUid);
+      await addBabyToFirestore(babyDataForCreation);
       
       toast({
         title: "פרופיל תינוק נוצר בהצלחה!",
@@ -81,10 +204,32 @@ export default function AddBabyPage() {
       router.push('/coach/dashboard');
     } catch (error) {
       console.error("Error creating baby:", error);
+      
+      // Enhanced error handling with specific feedback
+      let errorTitle = "שגיאה ביצירת פרופיל";
+      let errorDescription = "אירעה שגיאה בעת ניסיון ליצור את הפרופיל.";
+      
+      if (error instanceof Error) {
+        // Check for specific Firebase errors
+        if (error.message.includes('Missing or insufficient permissions')) {
+          errorTitle = "שגיאת הרשאות";
+          errorDescription = "אין לך הרשאה ליצור פרופילי תינוקות. אנא ודא שאתה מחובר כיועצת.";
+          
+          // Log additional debug information
+          console.error("Permission error occurred - check user role in Firestore");
+        } else if (error.message.includes('network')) {
+          errorTitle = "שגיאת רשת";
+          errorDescription = "בעיה בחיבור לשרת. אנא בדוק את החיבור לאינטרנט ונסה שוב.";
+        } else {
+          errorDescription = `פרטי שגיאה: ${error.message}`;
+        }
+      }
+
       toast({
-        title: "שגיאה ביצירת פרופיל",
-        description: "אירעה שגיאה בעת ניסיון ליצור את הפרופיל. נסה שוב.",
+        title: errorTitle,
+        description: errorDescription,
         variant: "destructive",
+        duration: 10000, // Longer duration for error messages
       });
     } finally {
       setIsSubmitting(false);
@@ -93,6 +238,17 @@ export default function AddBabyPage() {
 
   return (
     <div className="container mx-auto py-8">
+      {/* Show authentication error if there are issues */}
+      {authError && (
+        <div className="mb-6 p-4 border border-red-200 bg-red-50 rounded-lg">
+          <h3 className="text-lg font-semibold text-red-800 mb-2">⚠️ בעיית הרשאות</h3>
+          <p className="text-sm text-red-700">{authError}</p>
+          <p className="text-xs text-red-600 mt-2">
+            אם הבעיה נמשכת, אנא פנה לתמיכה או בדוק את הגדרות המשתמש שלך.
+          </p>
+        </div>
+      )}
+      
       <AddBabyForm onSubmitProp={handleCreateBabySubmit} isSubmitting={isSubmitting} isEditMode={false} />
     </div>
   );

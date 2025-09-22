@@ -16,8 +16,11 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Baby, SleepRecord, BabyFormData, SleepRecordFormData } from '@/types';
+import { EventCategory, AuditEventType } from '@/types';
 import { format } from 'date-fns';
 import { createInviteInFirestore } from './inviteService';
+import { getAuth } from 'firebase/auth';
+import { logger, logAudit, withPerformanceLogging } from '@/services/loggingService';
 
 export type { Baby }; // Exporting the Baby type
 const BABIES_COLLECTION = 'babies';
@@ -27,44 +30,216 @@ const getCurrentISODate = (): string => new Date().toISOString();
 
 /**
  * Adds a new baby to Firestore and creates an associated invite.
- * @param {Omit<BabyFormData, 'inviteCode'> & { parentUsername: string, parentEmails: string[] }} babyData - The baby's data, including generated username and optional emails.
- * @param {string} coachAuthUid - UID of the coach adding the baby.
+ * @param {Omit<Baby, 'id' | 'sleepRecords'>} babyData - The complete baby data object, including coachId.
  * @returns {Promise<string>} The ID of the newly created baby document.
  */
 export const addBabyToFirestore = async (
-  babyData: Omit<BabyFormData, 'inviteCode'> & { parentUsername: string, parentEmails: string[] },
-  coachAuthUid: string
+  babyData: Omit<Baby, 'id' | 'sleepRecords'>
 ): Promise<string> => {
-  // 1. Create the invite first to get its ID (the invite code)
-  const inviteCode = await createInviteInFirestore(
-    coachAuthUid,
-    {...babyData}, // Pass baby data to the invite
-    babyData.parentEmails
-  );
+  return withPerformanceLogging('addBabyToFirestore', async () => {
+    const startTime = Date.now();
 
-  // 2. Create the baby document using the auto-generated username as its ID
-  const babyDocRef = doc(db, BABIES_COLLECTION, babyData.parentUsername);
-  const newBabyDoc: Omit<Baby, 'id' | 'sleepRecords'> = {
-    name: babyData.name,
-    familyName: babyData.familyName,
-    age: babyData.age,
-    motherName: babyData.motherName,
-    fatherName: babyData.fatherName,
-    siblingsCount: babyData.siblingsCount,
-    siblingsNames: babyData.siblingsNames,
-    description: babyData.description,
+    try {
+      await logger.info('Starting baby creation', EventCategory.BABY_MANAGEMENT, {
+        coachId: babyData.coachId,
+        parentUsername: babyData.parentUsername,
+        name: babyData.name,
+        familyName: babyData.familyName
+      });
+
+      // Verify the coach user exists and has the correct role
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.uid !== babyData.coachId) {
+        const error = new Error('Coach authentication mismatch');
+        await logAudit(AuditEventType.BABY_CREATED, 'Baby creation failed: Authentication mismatch', {
+          success: false,
+          metadata: {
+            expectedCoachId: babyData.coachId,
+            currentUserId: currentUser?.uid,
+            reason: 'auth_mismatch'
+          },
+          error
+        });
+        throw error;
+      }
+
+      // Check if the user document exists in Firestore
+      const userDocRef = doc(db, 'users', babyData.coachId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        const error = new Error('Coach user document not found in Firestore');
+        await logAudit(AuditEventType.BABY_CREATED, 'Baby creation failed: Coach not found', {
+          success: false,
+          metadata: {
+            coachId: babyData.coachId,
+            reason: 'coach_not_found'
+          },
+          error
+        });
+        await logger.error('User document does not exist for coach', error, EventCategory.BABY_MANAGEMENT, {
+          coachId: babyData.coachId
+        });
+        throw error;
+      }
+      
+      const userData = userDoc.data();
+      if (userData.role !== 'coach') {
+        const error = new Error('User does not have coach role');
+        await logAudit(AuditEventType.BABY_CREATED, 'Baby creation failed: Invalid role', {
+          success: false,
+          metadata: {
+            coachId: babyData.coachId,
+            actualRole: userData.role,
+            reason: 'invalid_role'
+          },
+          error
+        });
+        await logger.error('User is not a coach', error, EventCategory.BABY_MANAGEMENT, {
+          coachId: babyData.coachId,
+          actualRole: userData.role
+        });
+        throw error;
+      }
+      
+      await logger.info('Coach verification passed', EventCategory.BABY_MANAGEMENT, {
+        uid: babyData.coachId,
+        role: userData.role
+      });
+
+      // 1. Create the invite first to get its ID (the invite code)
+      let inviteCode: string;
+      try {
+        await logger.info('Creating invite for baby', EventCategory.INVITATION);
+        inviteCode = await createInviteInFirestore(
+          babyData.coachId,
+          {...babyData}, // Pass baby data to the invite
+          [], // parentEmails are not part of the core baby doc anymore
+          'parent' // Explicitly specify this is a parent invite
+        );
+        await logger.info('Invite created successfully', EventCategory.INVITATION, {
+          inviteCode,
+          coachId: babyData.coachId
+        });
+      } catch (inviteError) {
+        const error = new Error(`Invite creation failed: ${inviteError instanceof Error ? inviteError.message : 'Unknown error'}`);
+        await logAudit(AuditEventType.BABY_CREATED, 'Baby creation failed: Invite creation failed', {
+          success: false,
+          metadata: {
+            coachId: babyData.coachId,
+            parentUsername: babyData.parentUsername,
+            reason: 'invite_creation_failed'
+          },
+          error
+        });
+        await logger.error('Failed to create invite', error, EventCategory.INVITATION, {
+          coachId: babyData.coachId,
+          originalError: inviteError instanceof Error ? inviteError.message : 'Unknown error'
+        });
+        throw error;
+      }
+
+      // 2. Create the baby document using the auto-generated username as its ID
+      const babyDocRef = doc(db, BABIES_COLLECTION, babyData.parentUsername);
+      
+      const newBabyDoc: Omit<Baby, 'id' | 'sleepRecords'> = {
+        ...babyData,
+        parentIds: [], // Ensure parentIds is initialized as an empty array
+        isArchived: false,
+        dateArchived: null,
+        lastModified: getCurrentISODate(),
+        inviteCode: inviteCode, // Store the generated invite code
+      };
+
+      try {
+        await logger.info('Creating baby document', EventCategory.BABY_MANAGEMENT, {
+          babyId: babyDocRef.id,
+          coachId: babyData.coachId,
+          inviteCode
+        });
+        
+        await setDoc(babyDocRef, newBabyDoc);
+
+        // Log successful baby creation audit trail
+        await logAudit(AuditEventType.BABY_CREATED, `Baby profile created: ${babyData.name} ${babyData.familyName}`, {
+          resourceId: babyDocRef.id,
+          resourceType: 'baby',
+          newValue: {
+            name: babyData.name,
+            familyName: babyData.familyName,
+            parentUsername: babyData.parentUsername,
+            coachId: babyData.coachId,
+            inviteCode
+          },
+          success: true,
+          duration: Date.now() - startTime,
+          metadata: {
+            age: babyData.age,
+            siblingsCount: babyData.siblingsCount,
+            hasDescription: !!babyData.description,
+            hasCoachNotes: !!babyData.coachNotes
+          }
+        });
+
+        await logger.info('Baby document created successfully', EventCategory.BABY_MANAGEMENT, {
+          babyId: babyDocRef.id,
+          name: babyData.name,
+          familyName: babyData.familyName,
+          coachId: babyData.coachId,
+          duration: Date.now() - startTime
+        });
+      } catch (babyError) {
+        const error = new Error(`Baby document creation failed: ${babyError instanceof Error ? babyError.message : 'Unknown error'}`);
+        await logAudit(AuditEventType.BABY_CREATED, 'Baby creation failed: Document creation failed', {
+          success: false,
+          duration: Date.now() - startTime,
+          metadata: {
+            coachId: babyData.coachId,
+            parentUsername: babyData.parentUsername,
+            inviteCode,
+            reason: 'document_creation_failed'
+          },
+          error
+        });
+        await logger.error('Failed to create baby document', error, EventCategory.BABY_MANAGEMENT, {
+          babyId: babyDocRef.id,
+          coachId: babyData.coachId,
+          originalError: babyError instanceof Error ? babyError.message : 'Unknown error'
+        });
+        // If baby creation fails, we should ideally clean up the invite, but for now just throw
+        throw error;
+      }
+
+      return babyDocRef.id;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message?.includes('Baby creation failed:')) {
+        // Log generic baby creation failure if not already logged
+        await logAudit(AuditEventType.BABY_CREATED, `Baby creation failed for ${babyData.name} ${babyData.familyName}`, {
+          success: false,
+          duration: Date.now() - startTime,
+          metadata: {
+            coachId: babyData.coachId,
+            parentUsername: babyData.parentUsername,
+            stage: 'unknown'
+          },
+          error: error instanceof Error ? error : new Error('Unknown baby creation error')
+        });
+      }
+
+      await logger.error('Error in addBabyToFirestore', error instanceof Error ? error : new Error('Unknown baby creation error'), EventCategory.BABY_MANAGEMENT, {
+        coachId: babyData.coachId,
+        parentUsername: babyData.parentUsername,
+        duration: Date.now() - startTime
+      });
+
+      throw error;
+    }
+  }, {
+    coachId: babyData.coachId,
     parentUsername: babyData.parentUsername,
-    coachNotes: babyData.coachNotes,
-    parentIds: [], // Initially empty, populated on invite redemption
-    isArchived: false,
-    dateArchived: null,
-    lastModified: getCurrentISODate(),
-    coachId: coachAuthUid,
-    inviteCode: inviteCode, // Store the invite code
-  };
-  await setDoc(babyDocRef, newBabyDoc);
-
-  return babyDocRef.id;
+    operation: 'baby_creation'
+  });
 };
 
 /**
@@ -229,20 +404,88 @@ export const isParentUsernameTakenInFirestore = async (username: string): Promis
  * @returns {Promise<string>} The ID of the newly created sleep record.
  */
 export const addSleepRecordToFirestore = async (babyId: string, recordData: SleepRecordFormData): Promise<string> => {
-  const sleepRecordsRef = collection(db, BABIES_COLLECTION, babyId, SLEEP_RECORDS_SUBCOLLECTION);
-  const newRecord: Omit<SleepRecord, 'id'> = {
-    date: format(recordData.date, "yyyy-MM-dd"),
-    sleepCycles: recordData.sleepCycles.map((sc, index) => ({
-      ...sc,
-      id: `cycle-${Date.now()}-${index}` // Simple unique ID for cycles within a record
-    })),
-    timestamp: Timestamp.fromDate(new Date(recordData.date)), // For ordering
-  };
-  const docRef = await addDoc(sleepRecordsRef, newRecord);
-  
-  // Update baby's lastModified timestamp
-  await updateBabyInFirestore(babyId, { lastModified: getCurrentISODate() });
-  return docRef.id;
+  return withPerformanceLogging('addSleepRecordToFirestore', async () => {
+    const startTime = Date.now();
+
+    try {
+      await logger.info('Adding sleep record', EventCategory.SLEEP_DATA, {
+        babyId,
+        date: format(recordData.date, "yyyy-MM-dd"),
+        cycleCount: recordData.sleepCycles.length
+      });
+
+      const sleepRecordsRef = collection(db, BABIES_COLLECTION, babyId, SLEEP_RECORDS_SUBCOLLECTION);
+      const newRecord: Omit<SleepRecord, 'id'> = {
+        date: format(recordData.date, "yyyy-MM-dd"),
+        sleepCycles: recordData.sleepCycles.map((sc, index) => ({
+          ...sc,
+          id: `cycle-${Date.now()}-${index}` // Simple unique ID for cycles within a record
+        })),
+        timestamp: Timestamp.fromDate(new Date(recordData.date)), // For ordering
+      };
+      
+      const docRef = await addDoc(sleepRecordsRef, newRecord);
+      
+      // Update baby's lastModified timestamp
+      await updateBabyInFirestore(babyId, { lastModified: getCurrentISODate() });
+
+      // Log successful sleep record creation
+      await logAudit(AuditEventType.SLEEP_RECORD_CREATED, `Sleep record created for baby ${babyId}`, {
+        resourceId: docRef.id,
+        resourceType: 'sleep_record',
+        newValue: {
+          babyId,
+          date: newRecord.date,
+          cycleCount: newRecord.sleepCycles.length,
+          cycles: newRecord.sleepCycles.map(cycle => ({
+            bedtime: cycle.bedtime,
+            wakeTime: cycle.wakeTime,
+            timeToSleep: cycle.timeToSleep
+          }))
+        },
+        success: true,
+        duration: Date.now() - startTime,
+        metadata: {
+          hasSleepCycles: newRecord.sleepCycles.length > 0,
+          recordDate: newRecord.date
+        }
+      });
+
+      await logger.info('Sleep record added successfully', EventCategory.SLEEP_DATA, {
+        babyId,
+        recordId: docRef.id,
+        date: newRecord.date,
+        cycleCount: newRecord.sleepCycles.length,
+        duration: Date.now() - startTime
+      });
+      
+      return docRef.id;
+    } catch (error) {
+      // Log failed sleep record creation
+      await logAudit(AuditEventType.SLEEP_RECORD_CREATED, `Sleep record creation failed for baby ${babyId}`, {
+        success: false,
+        duration: Date.now() - startTime,
+        metadata: {
+          babyId,
+          date: format(recordData.date, "yyyy-MM-dd"),
+          cycleCount: recordData.sleepCycles.length
+        },
+        error: error instanceof Error ? error : new Error('Unknown sleep record creation error')
+      });
+
+      await logger.error('Failed to add sleep record', error instanceof Error ? error : new Error('Unknown sleep record creation error'), EventCategory.SLEEP_DATA, {
+        babyId,
+        date: format(recordData.date, "yyyy-MM-dd"),
+        duration: Date.now() - startTime
+      });
+
+      throw error;
+    }
+  }, {
+    babyId,
+    operation: 'sleep_record_creation',
+    date: format(recordData.date, "yyyy-MM-dd")
+  });
 };
 
 /**
@@ -253,17 +496,102 @@ export const addSleepRecordToFirestore = async (babyId: string, recordData: Slee
  * @returns {Promise<void>}
  */
 export const updateSleepRecordInFirestore = async (babyId: string, recordId: string, updatedData: SleepRecordFormData): Promise<void> => {
-  const recordDocRef = doc(db, BABIES_COLLECTION, babyId, SLEEP_RECORDS_SUBCOLLECTION, recordId);
-  const updatedRecord: Partial<SleepRecord> = {
-    date: format(updatedData.date, "yyyy-MM-dd"),
-    sleepCycles: updatedData.sleepCycles.map((sc, index) => ({
-      id: sc.id || `cycle-updated-${Date.now()}-${index}`, // Keep existing id or generate new if missing
-      ...sc,
-    })),
-    timestamp: Timestamp.fromDate(new Date(updatedData.date)),
-  };
-  await updateDoc(recordDocRef, updatedRecord);
-  await updateBabyInFirestore(babyId, { lastModified: getCurrentISODate() });
+  return withPerformanceLogging('updateSleepRecordInFirestore', async () => {
+    const startTime = Date.now();
+
+    try {
+      // Get the existing record for audit logging
+      const recordDocRef = doc(db, BABIES_COLLECTION, babyId, SLEEP_RECORDS_SUBCOLLECTION, recordId);
+      const existingRecordSnap = await getDoc(recordDocRef);
+      const oldValue = existingRecordSnap.exists() ? existingRecordSnap.data() as SleepRecord : null;
+
+      await logger.info('Updating sleep record', EventCategory.SLEEP_DATA, {
+        babyId,
+        recordId,
+        date: format(updatedData.date, "yyyy-MM-dd"),
+        cycleCount: updatedData.sleepCycles.length
+      });
+
+      const updatedRecord: Partial<SleepRecord> = {
+        date: format(updatedData.date, "yyyy-MM-dd"),
+        sleepCycles: updatedData.sleepCycles.map((sc, index) => ({
+          id: sc.id || `cycle-updated-${Date.now()}-${index}`, // Keep existing id or generate new if missing
+          ...sc,
+        })),
+        timestamp: Timestamp.fromDate(new Date(updatedData.date)),
+      };
+
+      await updateDoc(recordDocRef, updatedRecord);
+      await updateBabyInFirestore(babyId, { lastModified: getCurrentISODate() });
+
+      // Log successful sleep record update
+      await logAudit(AuditEventType.SLEEP_RECORD_UPDATED, `Sleep record updated for baby ${babyId}`, {
+        resourceId: recordId,
+        resourceType: 'sleep_record',
+        oldValue: oldValue ? {
+          date: oldValue.date,
+          cycleCount: oldValue.sleepCycles?.length || 0,
+          cycles: oldValue.sleepCycles?.map(cycle => ({
+            bedtime: cycle.bedtime,
+            wakeTime: cycle.wakeTime,
+            timeToSleep: cycle.timeToSleep
+          })) || []
+        } : null,
+        newValue: {
+          date: updatedRecord.date,
+          cycleCount: updatedRecord.sleepCycles?.length || 0,
+          cycles: updatedRecord.sleepCycles?.map(cycle => ({
+            bedtime: cycle.bedtime,
+            wakeTime: cycle.wakeTime,
+            timeToSleep: cycle.timeToSleep
+          })) || []
+        },
+        success: true,
+        duration: Date.now() - startTime,
+        metadata: {
+          babyId,
+          recordDate: updatedRecord.date,
+          hadPreviousData: !!oldValue
+        }
+      });
+
+      await logger.info('Sleep record updated successfully', EventCategory.SLEEP_DATA, {
+        babyId,
+        recordId,
+        date: updatedRecord.date,
+        cycleCount: updatedRecord.sleepCycles?.length || 0,
+        duration: Date.now() - startTime
+      });
+    } catch (error) {
+      // Log failed sleep record update
+      await logAudit(AuditEventType.SLEEP_RECORD_UPDATED, `Sleep record update failed for baby ${babyId}`, {
+        resourceId: recordId,
+        resourceType: 'sleep_record',
+        success: false,
+        duration: Date.now() - startTime,
+        metadata: {
+          babyId,
+          date: format(updatedData.date, "yyyy-MM-dd"),
+          cycleCount: updatedData.sleepCycles.length
+        },
+        error: error instanceof Error ? error : new Error('Unknown sleep record update error')
+      });
+
+      await logger.error('Failed to update sleep record', error instanceof Error ? error : new Error('Unknown sleep record update error'), EventCategory.SLEEP_DATA, {
+        babyId,
+        recordId,
+        date: format(updatedData.date, "yyyy-MM-dd"),
+        duration: Date.now() - startTime
+      });
+
+      throw error;
+    }
+  }, {
+    babyId,
+    recordId,
+    operation: 'sleep_record_update',
+    date: format(updatedData.date, "yyyy-MM-dd")
+  });
 };
 
 /**
@@ -273,9 +601,77 @@ export const updateSleepRecordInFirestore = async (babyId: string, recordId: str
  * @returns {Promise<void>}
  */
 export const deleteSleepRecordFromFirestore = async (babyId: string, recordId: string): Promise<void> => {
-  const recordDocRef = doc(db, BABIES_COLLECTION, babyId, SLEEP_RECORDS_SUBCOLLECTION, recordId);
-  await deleteDoc(recordDocRef);
-  await updateBabyInFirestore(babyId, { lastModified: getCurrentISODate() });
+  return withPerformanceLogging('deleteSleepRecordFromFirestore', async () => {
+    const startTime = Date.now();
+
+    try {
+      // Get the existing record for audit logging before deletion
+      const recordDocRef = doc(db, BABIES_COLLECTION, babyId, SLEEP_RECORDS_SUBCOLLECTION, recordId);
+      const existingRecordSnap = await getDoc(recordDocRef);
+      const oldValue = existingRecordSnap.exists() ? existingRecordSnap.data() as SleepRecord : null;
+
+      await logger.info('Deleting sleep record', EventCategory.SLEEP_DATA, {
+        babyId,
+        recordId,
+        recordExists: !!oldValue
+      });
+
+      await deleteDoc(recordDocRef);
+      await updateBabyInFirestore(babyId, { lastModified: getCurrentISODate() });
+
+      // Log successful sleep record deletion
+      await logAudit(AuditEventType.SLEEP_RECORD_DELETED, `Sleep record deleted for baby ${babyId}`, {
+        resourceId: recordId,
+        resourceType: 'sleep_record',
+        oldValue: oldValue ? {
+          date: oldValue.date,
+          cycleCount: oldValue.sleepCycles?.length || 0,
+          cycles: oldValue.sleepCycles?.map(cycle => ({
+            bedtime: cycle.bedtime,
+            wakeTime: cycle.wakeTime,
+            timeToSleep: cycle.timeToSleep
+          })) || []
+        } : null,
+        success: true,
+        duration: Date.now() - startTime,
+        metadata: {
+          babyId,
+          recordDate: oldValue?.date,
+          hadData: !!oldValue
+        }
+      });
+
+      await logger.info('Sleep record deleted successfully', EventCategory.SLEEP_DATA, {
+        babyId,
+        recordId,
+        duration: Date.now() - startTime
+      });
+    } catch (error) {
+      // Log failed sleep record deletion
+      await logAudit(AuditEventType.SLEEP_RECORD_DELETED, `Sleep record deletion failed for baby ${babyId}`, {
+        resourceId: recordId,
+        resourceType: 'sleep_record',
+        success: false,
+        duration: Date.now() - startTime,
+        metadata: {
+          babyId
+        },
+        error: error instanceof Error ? error : new Error('Unknown sleep record deletion error')
+      });
+
+      await logger.error('Failed to delete sleep record', error instanceof Error ? error : new Error('Unknown sleep record deletion error'), EventCategory.SLEEP_DATA, {
+        babyId,
+        recordId,
+        duration: Date.now() - startTime
+      });
+
+      throw error;
+    }
+  }, {
+    babyId,
+    recordId,
+    operation: 'sleep_record_deletion'
+  });
 };
 
 /**

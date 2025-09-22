@@ -5,7 +5,7 @@
 ## Parent User
 
 ### Authentication
-
+  
 - Signs up with email, password and a one-time invite code that connect them to the correct baby record. 
 - After initial Sign up, each log in will direct to their baby record immediately.
 - Access is tied to a unique `parentUsername` (or invitation code) associated with a baby profile.

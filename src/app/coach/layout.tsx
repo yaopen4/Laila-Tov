@@ -22,7 +22,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-import { LogOut, UserPlus, Users, Archive, FileText, FileSpreadsheet } from 'lucide-react';
+import { LogOut, UserPlus, Users, Archive, FileText, FileSpreadsheet, User } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { onAuthChange, signOut as firebaseLogout, isCoachUser, type AuthUser } from '@/services/authService';
 import { useToast } from '@/hooks/use-toast';
@@ -107,6 +107,20 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
           </SidebarMenu>
         </SidebarContent>
         <Separator className="my-2" />
+        {/* Coach information section */}
+        <div className="p-2 border-b border-border/50">
+          <div className="flex items-center gap-3 px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:justify-center">
+            <User className="h-4 w-4 shrink-0" />
+            <div className="truncate group-data-[collapsible=icon]:hidden">
+              <div className="font-medium text-foreground truncate" title={currentUser?.name || ''}>
+                {currentUser?.name || 'לא זמין'}
+              </div>
+              <div className="text-xs truncate" title={currentUser?.email || ''}>
+                {currentUser?.email || 'לא זמין'}
+              </div>
+            </div>
+          </div>
+        </div>
          <div className="p-2 mt-auto"> {/* Footer section of sidebar */}
             <SidebarMenuButton
               onClick={handleLogout}
