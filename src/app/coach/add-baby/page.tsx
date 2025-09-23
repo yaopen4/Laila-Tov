@@ -2,12 +2,12 @@
  * @fileoverview Page for coaches to create a new baby profile.
  * This page uses the AddBabyForm component to capture baby details.
  * It then calls a service to create the baby and a corresponding invite in Firestore.
- * Includes enhanced error handling and authentication diagnostics.
+ * Includes error handling and authentication diagnostics.
  */
 "use client";
 import { AddBabyForm, type BabyFormData } from "@/components/coach/add-baby-form";
-import { addBabyToFirestore, isParentUsernameTakenInFirestore } from "@/services/babyService";
-import { getCurrentUser, upsertUserDocument } from "@/services/authService";
+import { BabyService } from "@/services/babyService";
+import { AuthService } from "@/services/authService";
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -25,9 +25,9 @@ export default function AddBabyPage() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const user = await getCurrentUser();
+        const user = await AuthService.getCurrentUser();
         
-        // Enhanced debugging
+        // Debugging
         console.log('Current user:', {
           uid: user?.uid,
           email: user?.email,
@@ -139,7 +139,7 @@ export default function AddBabyPage() {
     try {
       // Verify user document exists and has coach role before proceeding
       console.log('Verifying coach permissions for:', coachUid);
-      const currentUser = await getCurrentUser();
+        const currentUser = await AuthService.getCurrentUser();
       if (!currentUser || currentUser.role !== 'coach') {
         console.error('User verification failed:', {
           exists: !!currentUser,
@@ -155,46 +155,16 @@ export default function AddBabyPage() {
         return;
       }
       console.log('Coach verification successful');
-      // Auto-generate a unique parentUsername for the baby document ID
-      const parentUsername = `${values.name.toLowerCase().replace(/\s+/g, '-')}-${values.familyName.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
       
-      if (await isParentUsernameTakenInFirestore(parentUsername)) {
-         // This is highly unlikely with the random suffix, but good practice to check
-         toast({
-          title: "שגיאה ביצירת מזהה",
-          description: "אירעה שגיאה נדירה ביצירת מזהה ייחודי. אנא נסה שוב.",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
+      // Get organization ID from current user
+      const organizationId = currentUser.organizationId || 'default-org';
       
-      // Filter out empty strings from parent emails
-      const parentEmails = [values.parentEmail1, values.parentEmail2].filter((email): email is string => !!email);
-
-      // Construct the complete baby data object for creation
-      const babyDataForCreation = {
-        name: values.name,
-        familyName: values.familyName,
-        age: values.age,
-        motherName: values.motherName,
-        fatherName: values.fatherName,
-        siblingsCount: values.siblingsCount,
-        siblingsNames: values.siblingsNames || "",
-        description: values.description || "",
-        parentUsername: parentUsername,
-        coachNotes: values.coachNotes || "",
-        // These fields are required by the Baby type but are set by the service
-        // or initialized to a default state.
-        coachId: coachUid,
-        parentIds: [],
-        isArchived: false,
-        dateArchived: null,
-        lastModified: "", // Will be set by the service
-        inviteCode: "", // Will be set by the service
-      };
-
-      await addBabyToFirestore(babyDataForCreation);
+      // Create baby profile using service
+      const babyId = await BabyService.createBabyProfile(
+        values,
+        coachUid,
+        organizationId
+      );
       
       toast({
         title: "פרופיל תינוק נוצר בהצלחה!",

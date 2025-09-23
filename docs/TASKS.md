@@ -15,12 +15,12 @@ This document consolidates requirements from the PRD and features documentation 
 ### Authentication & Registration Issues
 - [x] **Fix coach registration process** - New coaches cannot enter the system properly ✅
   - Dependencies: Admin invitation system, Coach onboarding flow
-  - Files: `src/components/auth/signup-form.tsx`, `src/services/authService.ts`, `src/services/inviteService.ts`, `src/types/index.ts`
+  - Files: `src/components/auth/signup-form.tsx`, `src/services/authService.ts`, `src/services/invitationService.ts`, `src/types/index.ts`
   - **Resolution**: Fixed invitation validation logic to properly handle coach invites by adding `invitedEmails` field and updating validation functions
 
 - [ ] **Implement admin invitation cancellation** - Admin cannot cancel pending invitations
   - Dependencies: Invitation service updates, Admin UI enhancements
-  - Files: `src/services/inviteService.ts`, `src/app/admin/invites/page.tsx`
+  - Files: `src/services/invitationService.ts`, `src/app/admin/manual-invitations/page.tsx`
 
 ### Baby Management Issues
 - [ ] **Fix baby creation for coaches** - Coaches cannot create new baby profiles
@@ -80,7 +80,7 @@ This document consolidates requirements from the PRD and features documentation 
   - Add retry logic for failed invitations
   - Implement invitation expiration cleanup
   - Add bulk invitation capabilities
-  - Files: `src/services/inviteService.ts`
+  - Files: `src/services/invitationService.ts`
 
 - [x] **Implement comprehensive logging** ✅
   - Added structured logging throughout application
@@ -103,7 +103,7 @@ This document consolidates requirements from the PRD and features documentation 
   - Implement optimistic updates
   - Files: All component files with data fetching
 
-- [ ] **Enhanced mobile optimization**
+- [ ] **Mobile optimization**
   - Improve touch interactions
   - Optimize for various screen sizes
   - Add mobile-specific gestures
@@ -124,7 +124,7 @@ This document consolidates requirements from the PRD and features documentation 
   - Add high contrast mode
   - Files: All UI components
 
-- [ ] **Enhanced Hebrew and RTL support**
+- [ ] **Hebrew and RTL support**
   - Fix remaining RTL layout issues
   - Improve Hebrew text rendering
   - Add Hebrew date formatting
@@ -142,7 +142,7 @@ This document consolidates requirements from the PRD and features documentation 
   - Data recovery capabilities
   - Files: `src/components/auth/`, `src/services/authService.ts`
 
-- [ ] **Enhanced admin dashboard**
+- [ ] **Admin dashboard improvements**
   - Real-time status monitoring
   - Advanced user management
   - System analytics and metrics
@@ -299,7 +299,7 @@ This document consolidates requirements from the PRD and features documentation 
 4. Implement testing suite
 
 ### Phase 3: Enhancement Features (Weeks 5-8)
-1. Enhanced dashboards
+1. Advanced dashboards
 2. Advanced analytics
 3. Mobile optimization
 4. Accessibility improvements
@@ -400,8 +400,9 @@ This document consolidates requirements from the PRD and features documentation 
 
 ### Admin Dashboard
 - `src/app/admin/dashboard/page.tsx` - Admin overview ✅
-- `src/app/admin/invites/page.tsx` - Invitation management ✅
-- `src/services/inviteService.ts` - Invitation logic ✅
+- `src/app/admin/manual-invitations/page.tsx` - Invitation management ✅
+- `src/app/admin/email-templates/page.tsx` - Email templates management ✅
+- `src/services/invitationService.ts` - Invitation logic ✅
 
 ### Coach Dashboard
 - `src/app/coach/dashboard/page.tsx` - Coach overview ✅
@@ -448,3 +449,9 @@ This document consolidates requirements from the PRD and features documentation 
 - Update file paths and descriptions as implementation progresses
 - Regular review and prioritization of remaining tasks
 - Track dependencies and blockers for efficient development flow
+
+---
+
+## Discovered During Work (September 23, 2025)
+
+- `src/components/shared/permission-based-navigation.tsx` appears unused. Decide to either integrate into `src/app/**/layout.tsx` for role-gated navigation or remove.

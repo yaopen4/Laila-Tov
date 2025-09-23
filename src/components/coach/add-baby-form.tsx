@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { UserPlus, Edit3, MessageSquareText, Mail, KeySquare } from "lucide-react";
-import type { Baby } from "@/types"; // Using Baby type for initialData
+import type { BabyProfile } from "@/types/auth"; // Using BabyProfile type for initialData
 import { useEffect } from "react";
 
 // Zod schema for form validation. Defines the structure and validation rules for baby data.
@@ -53,7 +53,7 @@ export type BabyFormData = z.infer<typeof addBabyFormSchema>;
  * Props for the AddBabyForm component.
  */
 interface AddBabyFormProps {
-  initialData?: Partial<Baby> | null;
+  initialData?: Partial<BabyProfile> | null;
   isEditMode?: boolean;
   onSubmitProp: (values: BabyFormData, id?: string) => Promise<void>;
   isSubmitting?: boolean;

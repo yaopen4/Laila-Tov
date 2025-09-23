@@ -1,86 +1,26 @@
-// types/audit.ts
+// Comprehensive Audit Logging Service
+import { 
+  doc, 
+  collection, 
+  setDoc, 
+  query, 
+  where, 
+  getDocs, 
+  getDoc,
+  orderBy, 
+  limit, 
+  startAfter,
+  Timestamp 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { 
+  AuditLogEntry, 
+  AuditAction, 
+  AuditCategory,
+  User,
+  AuditReportSummary 
+} from '@/types/auth';
 
-export interface AuditLogEntry {
-  id: string;
-  timestamp: FirebaseFirestore.Timestamp;
-  
-  // Actor information
-  userId: string;
-  userEmail: string;
-  userRole: string;
-  organizationId: string;
-  
-  // Action details
-  action: AuditAction;
-  category: AuditCategory;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  
-  // Target information
-  targetType?: 'user' | 'baby_profile' | 'sleep_log' | 'role' | 'organization' | 'invitation';
-  targetId?: string;
-  targetUserId?: string; // If action affects another user
-  
-  // Context
-  ipAddress?: string;
-  userAgent?: string;
-  sessionId?: string;
-  
-  // Additional details (structured data)
-  details: Record<string, any>;
-  
-  // Success/failure tracking
-  success: boolean;
-  errorMessage?: string;
-  
-  // Data changes (for update operations)
-  previousValues?: Record<string, any>;
-  newValues?: Record<string, any>;
-}
-
-export type AuditAction = 
-  // Authentication & User Management
-  | 'user_login' | 'user_logout' | 'user_login_failed' | 'user_registered' | 'user_deactivated'
-  | 'password_changed' | 'password_reset_requested' | 'password_reset_completed'
-  
-  // Invitation Management
-  | 'invitation_created' | 'invitation_sent' | 'invitation_accepted' | 'invitation_expired'
-  | 'invitation_cancelled' | 'invitation_resent'
-  
-  // Role Management
-  | 'role_created' | 'role_updated' | 'role_deleted' | 'role_assigned' | 'role_unassigned'
-  | 'permission_granted' | 'permission_revoked'
-  
-  // Baby Profile Management
-  | 'baby_profile_created' | 'baby_profile_updated' | 'baby_profile_archived'
-  | 'baby_profile_transferred' | 'baby_profile_restored'
-  | 'parent_added_to_baby' | 'parent_removed_from_baby'
-  
-  // Sleep Data
-  | 'sleep_log_created' | 'sleep_log_updated' | 'sleep_log_deleted'
-  | 'sleep_data_exported' | 'sleep_data_imported'
-  
-  // Consultation & Recommendations
-  | 'recommendation_created' | 'recommendation_updated' | 'recommendation_viewed'
-  | 'consultation_note_added'
-  
-  // Reports & Analytics
-  | 'report_generated' | 'report_exported' | 'report_shared'
-  | 'dashboard_viewed' | 'analytics_accessed'
-  
-  // System Administration
-  | 'organization_settings_updated' | 'system_backup_created'
-  | 'data_migration_started' | 'data_migration_completed'
-  | 'security_incident_detected' | 'suspicious_activity_blocked'
-  
-  // Data Access
-  | 'data_accessed' | 'unauthorized_access_attempt' | 'data_download_requested'
-  | 'bulk_data_operation' | 'sensitive_data_viewed';
-
-export type AuditCategory = 
-  | 'authentication' | 'user_management' | 'data_access' | 'data_modification'
-  | 'system_admin' | 'security' | 'compliance' | 'performance';
-
-// services/auditLogger.ts
 export class AuditLogger {
   
   /**
@@ -101,17 +41,14 @@ export class AuditLogger {
     userAgent?: string;
   }): Promise<void> {
     try {
-      // Get user context
-      const userDoc = await admin.firestore()
-        .collection('users')
-        .doc(params.userId)
-        .get();
+      // Get user context (Firestore v9 modular API)
+      const userSnap = await getDoc(doc(db, 'users', params.userId));
       
-      const user = userDoc.exists ? userDoc.data() as User : null;
+      const user = userSnap.exists() ? userSnap.data() as User : null;
       
       const auditEntry: AuditLogEntry = {
-        id: admin.firestore().collection('audit_logs').doc().id,
-        timestamp: admin.firestore.Timestamp.now(),
+        id: doc(collection(db, 'audit_logs')).id,
+        timestamp: Timestamp.now(),
         
         // Actor information
         userId: params.userId,
@@ -143,12 +80,12 @@ export class AuditLogger {
       };
       
       // Store in appropriate collection based on sensitivity
-      const collection = this.getAuditCollection(auditEntry.category, auditEntry.severity);
+      const collectionName = this.getAuditCollection(auditEntry.category, auditEntry.severity);
       
-      await admin.firestore()
-        .collection(collection)
-        .doc(auditEntry.id)
-        .set(auditEntry);
+      await setDoc(
+        doc(db, collectionName, auditEntry.id),
+        auditEntry
+      );
       
       // Check for security alerts
       await this.checkSecurityAlerts(auditEntry);
@@ -161,7 +98,6 @@ export class AuditLogger {
     } catch (error) {
       console.error('Failed to log audit event:', error);
       // Don't throw - logging failure shouldn't break application flow
-      // But we should log this failure to a backup system
       await this.logToBackupSystem(params, error);
     }
   }
@@ -310,32 +246,32 @@ export class AuditLogger {
     });
 
     // Query audit logs based on report type
-    const query = this.buildReportQuery(params);
-    const auditLogs = await query.get();
+    const queryRef = this.buildReportQuery(params);
+    const auditLogs = await getDocs(queryRef);
     
     // Generate report data
     const reportData = this.processAuditLogsForReport(auditLogs.docs, params.reportType);
     
     // Create report document
-    const reportId = admin.firestore().collection('compliance_reports').doc().id;
+    const reportId = doc(collection(db, 'compliance_reports')).id;
     const reportDoc = {
       id: reportId,
       organizationId: params.organizationId,
       generatedBy: params.userId,
-      generatedAt: admin.firestore.Timestamp.now(),
+      generatedAt: Timestamp.now(),
       reportType: params.reportType,
       dateRange: {
-        start: admin.firestore.Timestamp.fromDate(params.startDate),
-        end: admin.firestore.Timestamp.fromDate(params.endDate)
+        start: Timestamp.fromDate(params.startDate),
+        end: Timestamp.fromDate(params.endDate)
       },
       summary: this.generateReportSummary(reportData),
       data: reportData
     };
     
-    await admin.firestore()
-      .collection('compliance_reports')
-      .doc(reportId)
-      .set(reportDoc);
+    await setDoc(
+      doc(db, 'compliance_reports', reportId),
+      reportDoc
+    );
     
     // Generate downloadable file (PDF/Excel)
     const downloadUrl = await this.generateReportFile(reportDoc);
@@ -363,70 +299,56 @@ export class AuditLogger {
     targetId?: string;
     successOnly?: boolean;
     ipAddress?: string;
-    limit?: number;
+    limitCount?: number;
     offset?: number;
   }): Promise<{
     logs: AuditLogEntry[];
     totalCount: number;
     hasMore: boolean;
   }> {
-    let query = admin.firestore()
-      .collection('audit_logs')
-      .where('organizationId', '==', params.organizationId) as any;
+    let queryRef = query(
+      collection(db, 'audit_logs'),
+      where('organizationId', '==', params.organizationId)
+    );
 
     // Apply filters
     if (params.userId) {
-      query = query.where('userId', '==', params.userId);
+      queryRef = query(queryRef, where('userId', '==', params.userId));
     }
     
     if (params.targetUserId) {
-      query = query.where('targetUserId', '==', params.targetUserId);
+      queryRef = query(queryRef, where('targetUserId', '==', params.targetUserId));
     }
     
     if (params.actions && params.actions.length > 0) {
-      query = query.where('action', 'in', params.actions);
+      queryRef = query(queryRef, where('action', 'in', params.actions));
     }
     
     if (params.categories && params.categories.length > 0) {
-      query = query.where('category', 'in', params.categories);
+      queryRef = query(queryRef, where('category', 'in', params.categories));
     }
     
     if (params.startDate) {
-      query = query.where('timestamp', '>=', 
-        admin.firestore.Timestamp.fromDate(params.startDate));
+      queryRef = query(queryRef, where('timestamp', '>=', Timestamp.fromDate(params.startDate)));
     }
     
     if (params.endDate) {
-      query = query.where('timestamp', '<=', 
-        admin.firestore.Timestamp.fromDate(params.endDate));
+      queryRef = query(queryRef, where('timestamp', '<=', Timestamp.fromDate(params.endDate)));
     }
     
     if (params.successOnly !== undefined) {
-      query = query.where('success', '==', params.successOnly);
+      queryRef = query(queryRef, where('success', '==', params.successOnly));
     }
 
     // Order and paginate
-    query = query.orderBy('timestamp', 'desc');
+    queryRef = query(queryRef, orderBy('timestamp', 'desc'));
     
-    if (params.offset) {
-      // Get document to start after for pagination
-      const offsetDoc = await admin.firestore()
-        .collection('audit_logs')
-        .orderBy('timestamp', 'desc')
-        .limit(params.offset)
-        .get();
-      
-      if (!offsetDoc.empty) {
-        query = query.startAfter(offsetDoc.docs[offsetDoc.docs.length - 1]);
-      }
-    }
-    
-    const limit = params.limit || 50;
-    query = query.limit(limit + 1); // Get one extra to check if there are more
+    const limitCount = params.limitCount || 50;
+    queryRef = query(queryRef, limit(limitCount + 1)); // Get one extra to check if there are more
 
-    const snapshot = await query.get();
-    const logs = snapshot.docs.slice(0, limit).map(doc => doc.data() as AuditLogEntry);
-    const hasMore = snapshot.docs.length > limit;
+    const snapshot = await getDocs(queryRef);
+    const logs = snapshot.docs.slice(0, limitCount).map(doc => doc.data() as AuditLogEntry);
+    const hasMore = snapshot.docs.length > limitCount;
 
     return {
       logs,
@@ -435,26 +357,7 @@ export class AuditLogger {
     };
   }
 
-  /**
-   * Real-time audit log monitoring
-   */
-  static setupRealTimeMonitoring(organizationId: string, callback: (log: AuditLogEntry) => void) {
-    return admin.firestore()
-      .collection('audit_logs')
-      .where('organizationId', '==', organizationId)
-      .where('timestamp', '>=', admin.firestore.Timestamp.now())
-      .orderBy('timestamp', 'desc')
-      .onSnapshot(snapshot => {
-        snapshot.docChanges().forEach(change => {
-          if (change.type === 'added') {
-            const auditLog = change.doc.data() as AuditLogEntry;
-            callback(auditLog);
-          }
-        });
-      });
-  }
-
-  // Private helper methods...
+  // Private helper methods
 
   /**
    * Categorize action for proper indexing and filtering
@@ -494,10 +397,41 @@ export class AuditLogger {
       // System Admin
       'organization_settings_updated': 'system_admin',
       'role_created': 'system_admin',
-      'system_backup_created': 'system_admin'
+      'system_backup_created': 'system_admin',
       
-      // Add mappings for all other actions...
-    } as any;
+      // Additional mappings for all other actions...
+      'invitation_created': 'user_management',
+      'invitation_sent': 'user_management',
+      'invitation_accepted': 'user_management',
+      'invitation_expired': 'user_management',
+      'invitation_cancelled': 'user_management',
+      'invitation_resent': 'user_management',
+      'role_created': 'system_admin',
+      'role_updated': 'system_admin',
+      'role_deleted': 'system_admin',
+      'permission_granted': 'user_management',
+      'permission_revoked': 'user_management',
+      'baby_profile_archived': 'data_modification',
+      'baby_profile_transferred': 'data_modification',
+      'baby_profile_restored': 'data_modification',
+      'parent_added_to_baby': 'data_modification',
+      'parent_removed_from_baby': 'data_modification',
+      'sleep_log_deleted': 'data_modification',
+      'sleep_data_imported': 'data_modification',
+      'recommendation_created': 'data_modification',
+      'recommendation_updated': 'data_modification',
+      'recommendation_viewed': 'data_access',
+      'consultation_note_added': 'data_modification',
+      'report_exported': 'data_access',
+      'report_shared': 'data_access',
+      'dashboard_viewed': 'data_access',
+      'analytics_accessed': 'data_access',
+      'data_migration_started': 'system_admin',
+      'data_migration_completed': 'system_admin',
+      'data_download_requested': 'data_access',
+      'bulk_data_operation': 'data_modification',
+      'sensitive_data_viewed': 'data_access'
+    };
     
     return categoryMap[action] || 'system_admin';
   }
@@ -559,6 +493,13 @@ export class AuditLogger {
   }
 
   /**
+   * Generate session ID for tracking
+   */
+  private static generateSessionId(userId: string): string {
+    return `${userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
    * Check for security alerts and patterns
    */
   private static async checkSecurityAlerts(auditEntry: AuditLogEntry): Promise<void> {
@@ -580,13 +521,14 @@ export class AuditLogger {
 
   private static async checkFailedLoginPattern(auditEntry: AuditLogEntry): Promise<void> {
     // Get recent failed login attempts for this IP/user
-    const recentAttempts = await admin.firestore()
-      .collection('audit_logs')
-      .where('action', '==', 'user_login_failed')
-      .where('ipAddress', '==', auditEntry.ipAddress)
-      .where('timestamp', '>=', 
-        admin.firestore.Timestamp.fromDate(new Date(Date.now() - 15 * 60 * 1000))) // 15 minutes
-      .get();
+    const recentAttempts = await getDocs(
+      query(
+        collection(db, 'audit_logs'),
+        where('action', '==', 'user_login_failed'),
+        where('ipAddress', '==', auditEntry.ipAddress),
+        where('timestamp', '>=', Timestamp.fromDate(new Date(Date.now() - 15 * 60 * 1000))) // 15 minutes
+      )
+    );
     
     if (recentAttempts.size >= 5) {
       await this.logSecurityEvent({
@@ -602,6 +544,79 @@ export class AuditLogger {
         ipAddress: auditEntry.ipAddress,
         automaticResponse: 'ip_temporary_block'
       });
+    }
+  }
+
+  private static async checkDataAccessPatterns(auditEntry: AuditLogEntry): Promise<void> {
+    // Check for unusual data access patterns
+    if (auditEntry.details.recordCount && auditEntry.details.recordCount > 100) {
+      // Large data access - flag for review
+      await this.logSecurityEvent({
+        action: 'bulk_data_operation',
+        severity: 'medium',
+        details: {
+          type: 'large_data_access',
+          recordCount: auditEntry.details.recordCount,
+          userId: auditEntry.userId,
+          targetType: auditEntry.targetType,
+          dataScope: auditEntry.details.dataScope
+        },
+        userId: auditEntry.userId
+      });
+    }
+    
+    // Check for rapid successive access
+    const recentAccess = await getDocs(
+      query(
+        collection(db, 'audit_logs'),
+        where('userId', '==', auditEntry.userId),
+        where('category', '==', 'data_access'),
+        where('timestamp', '>=', Timestamp.fromDate(new Date(Date.now() - 5 * 60 * 1000))) // 5 minutes
+      )
+    );
+    
+    if (recentAccess.size > 20) {
+      await this.logSecurityEvent({
+        action: 'suspicious_activity_blocked',
+        severity: 'high',
+        details: {
+          type: 'rapid_data_access',
+          accessCount: recentAccess.size,
+          timeWindow: '5_minutes',
+          userId: auditEntry.userId
+        },
+        userId: auditEntry.userId
+      });
+    }
+  }
+
+  private static async checkPrivilegeEscalation(auditEntry: AuditLogEntry): Promise<void> {
+    // Check for suspicious role assignments or permission grants
+    if (auditEntry.action === 'role_assigned') {
+      const currentUser = await getDoc(doc(db, 'users', auditEntry.userId));
+      const targetUser = auditEntry.targetUserId ? 
+        await getDoc(doc(db, 'users', auditEntry.targetUserId)) : null;
+      
+      if (currentUser.exists() && targetUser?.exists()) {
+        const assignerRole = currentUser.data()?.role;
+        const targetRole = auditEntry.details.roleId;
+        
+        // Flag if non-admin assigns admin role
+        if (assignerRole !== 'admin' && targetRole?.includes('admin')) {
+          await this.logSecurityEvent({
+            action: 'security_incident_detected',
+            severity: 'critical',
+            details: {
+              type: 'privilege_escalation_attempt',
+              assignerId: auditEntry.userId,
+              targetUserId: auditEntry.targetUserId,
+              assignerRole,
+              targetRole
+            },
+            userId: auditEntry.userId
+          });
+        }
+      }
     }
   }
 
@@ -643,19 +658,171 @@ export class AuditLogger {
     const significant = significantFields[targetType as keyof typeof significantFields] || [];
     return Object.keys(changes).filter(field => significant.includes(field));
   }
+
+  private static parseBrowserInfo(userAgent?: string): any {
+    // Basic browser info parsing
+    return {
+      userAgent: userAgent || 'unknown',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  private static async getLocationFromIP(ipAddress?: string): Promise<any> {
+    // Mock implementation - in real scenario, would use IP geolocation service
+    return {
+      ip: ipAddress || 'unknown',
+      country: 'unknown',
+      city: 'unknown'
+    };
+  }
+
+  private static async triggerRealTimeAlert(auditEntry: AuditLogEntry): Promise<void> {
+    // Implementation for real-time alerts (email, SMS, etc.)
+    console.warn('CRITICAL SECURITY EVENT:', auditEntry);
+  }
+
+  private static async logToBackupSystem(params: any, error: any): Promise<void> {
+    // Backup logging mechanism
+    console.error('Audit logging failed, logging to backup:', { params, error });
+  }
+
+  private static buildReportQuery(params: {
+    organizationId: string;
+    startDate: Date;
+    endDate: Date;
+    reportType: string;
+  }): any {
+    let queryRef = query(
+      collection(db, 'audit_logs'),
+      where('organizationId', '==', params.organizationId),
+      where('timestamp', '>=', Timestamp.fromDate(params.startDate)),
+      where('timestamp', '<=', Timestamp.fromDate(params.endDate))
+    );
+    
+    // Add report type specific filters
+    if (params.reportType === 'security') {
+      queryRef = query(queryRef, where('category', '==', 'security'));
+    } else if (params.reportType === 'data_access') {
+      queryRef = query(queryRef, where('category', '==', 'data_access'));
+    }
+    
+    return query(queryRef, orderBy('timestamp', 'desc'));
+  }
+
+  private static processAuditLogsForReport(docs: any[], reportType: string): any[] {
+    return docs.map(doc => {
+      const data = doc.data();
+      return {
+        timestamp: data.timestamp.toDate().toISOString(),
+        userId: data.userId,
+        userEmail: data.userEmail,
+        action: data.action,
+        category: data.category,
+        severity: data.severity,
+        success: data.success,
+        details: data.details
+      };
+    });
+  }
+
+  private static generateReportSummary(reportData: any[]): AuditReportSummary {
+    const eventsByCategory: Record<AuditCategory, number> = {
+      authentication: 0,
+      user_management: 0,
+      data_access: 0,
+      data_modification: 0,
+      system_admin: 0,
+      security: 0,
+      compliance: 0,
+      performance: 0
+    };
+    
+    const eventsBySeverity: Record<string, number> = {
+      low: 0,
+      medium: 0,
+      high: 0,
+      critical: 0
+    };
+    
+    const uniqueUsers = new Set<string>();
+    let securityIncidents = 0;
+    let failedAttempts = 0;
+    let dataAccessCount = 0;
+    
+    reportData.forEach(event => {
+      eventsByCategory[event.category] = (eventsByCategory[event.category] || 0) + 1;
+      eventsBySeverity[event.severity] = (eventsBySeverity[event.severity] || 0) + 1;
+      uniqueUsers.add(event.userId);
+      
+      if (event.category === 'security') securityIncidents++;
+      if (!event.success) failedAttempts++;
+      if (event.category === 'data_access') dataAccessCount++;
+    });
+    
+    return {
+      totalEvents: reportData.length,
+      eventsByCategory,
+      eventsBySeverity,
+      uniqueUsers: uniqueUsers.size,
+      securityIncidents,
+      failedAttempts,
+      dataAccessCount,
+      dateRange: {
+        start: reportData[reportData.length - 1]?.timestamp || new Date().toISOString(),
+        end: reportData[0]?.timestamp || new Date().toISOString()
+      }
+    };
+  }
+
+  private static async generateReportFile(reportDoc: any): Promise<string> {
+    // Generate CSV report file
+    const csvContent = this.generateCSVReport(reportDoc.data);
+    
+    // In a real implementation, this would upload to cloud storage
+    // For now, create a data URL that can be downloaded
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    return url;
+  }
+
+  private static generateCSVReport(reportData: any[]): string {
+    const headers = ['Timestamp', 'User Email', 'Action', 'Category', 'Severity', 'Success', 'Details'];
+    const csvRows = [headers.join(',')];
+    
+    reportData.forEach(event => {
+      const row = [
+        event.timestamp,
+        event.userEmail,
+        event.action,
+        event.category,
+        event.severity,
+        event.success,
+        JSON.stringify(event.details).replace(/"/g, '""')
+      ];
+      csvRows.push(row.map(field => `"${field}"`).join(','));
+    });
+    
+    return csvRows.join('\n');
+  }
+
+  private static async getAuditLogCount(organizationId: string, params: any): Promise<number> {
+    // Build count query with same filters
+    let queryRef = query(
+      collection(db, 'audit_logs'),
+      where('organizationId', '==', organizationId)
+    );
+    
+    if (params.startDate) {
+      queryRef = query(queryRef, where('timestamp', '>=', Timestamp.fromDate(params.startDate)));
+    }
+    
+    if (params.endDate) {
+      queryRef = query(queryRef, where('timestamp', '<=', Timestamp.fromDate(params.endDate)));
+    }
+    
+    const snapshot = await getDocs(queryRef);
+    return snapshot.size;
+  }
 }
 
-interface AuditReportSummary {
-  totalEvents: number;
-  eventsByCategory: Record<AuditCategory, number>;
-  eventsBySeverity: Record<string, number>;
-  uniqueUsers: number;
-  securityIncidents: number;
-  failedAttempts: number;
-  dataAccessCount: number;
-  dateRange: {
-    start: string;
-    end: string;
-  };
-}
-  

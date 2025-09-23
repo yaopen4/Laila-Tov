@@ -1,10 +1,10 @@
 
 import type { FC } from 'react';
-import type { Baby } from '@/lib/mock-data';
+import type { BabyProfile } from '@/types/auth';
 import BabyCard from './baby-card';
 
 interface BabyListProps {
-  babies: Baby[];
+  babies: BabyProfile[];
   // Removed onBabyArchived prop
 }
 

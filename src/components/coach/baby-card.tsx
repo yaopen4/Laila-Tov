@@ -6,7 +6,7 @@
  */
 import type { FC } from 'react';
 import Link from 'next/link';
-import type { Baby } from '@/types'; // Use Baby type from central types definition
+import type { BabyProfile } from '@/types/auth';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { User, Edit3, Eye } from 'lucide-react';
@@ -18,7 +18,7 @@ import { he } from 'date-fns/locale';
  */
 interface BabyCardProps {
   /** The baby object containing details to display. */
-  baby: Baby;
+  baby: BabyProfile;
 }
 
 /**

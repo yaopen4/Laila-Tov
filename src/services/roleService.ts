@@ -1,59 +1,27 @@
-// types/permissions.ts
+// Advanced Role Service for Granular Permission Management
+import { 
+  doc, 
+  collection, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  query, 
+  where, 
+  getDocs,
+  Timestamp 
+} from 'firebase/firestore';
+import { auth } from 'firebase/auth';
+import { db } from '@/lib/firebase';
+import type { 
+  Permission, 
+  Role, 
+  UserRoleAssignment, 
+  RoleConstraints,
+  User,
+  AuditAction 
+} from '@/types/auth';
+import { AuditLogger } from './auditLogger';
 
-// Granular permission system
-export interface Permission {
-  id: string;
-  name: string;
-  description: string;
-  category: 'user_management' | 'data_access' | 'baby_management' | 'system' | 'reporting';
-  level: 'read' | 'write' | 'admin';
-  dependencies?: string[]; // Required permissions
-}
-
-export interface Role {
-  id: string;
-  name: string;
-  displayName: string;
-  description: string;
-  organizationId: string;
-  isSystemRole: boolean; // Cannot be modified
-  isActive: boolean;
-  permissions: string[]; // Permission IDs
-  constraints?: RoleConstraints;
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
-  createdBy: string;
-}
-
-export interface RoleConstraints {
-  maxBabyProfiles?: number;
-  maxParentInvitations?: number;
-  dataRetentionDays?: number;
-  allowExport?: boolean;
-  restrictedTimeAccess?: {
-    startTime: string; // "09:00"
-    endTime: string;   // "17:00"
-    daysOfWeek: number[]; // [1,2,3,4,5] for weekdays
-  };
-}
-
-// Enhanced user model with role assignments
-export interface UserRoleAssignment {
-  userId: string;
-  roleId: string;
-  organizationId: string;
-  assignedBy: string;
-  assignedAt: FirebaseFirestore.Timestamp;
-  expiresAt?: FirebaseFirestore.Timestamp;
-  isActive: boolean;
-  context?: {
-    babyProfileIds?: string[];
-    departmentId?: string;
-    territoryId?: string;
-  };
-}
-
-// services/roleService.ts
 export class RoleService {
   
   /**
@@ -269,6 +237,20 @@ export class RoleService {
   };
 
   /**
+   * Get all available permissions
+   */
+  static getSystemPermissions(): Permission[] {
+    return [...this.SYSTEM_PERMISSIONS];
+  }
+
+  /**
+   * Get system role definitions
+   */
+  static getSystemRoles() {
+    return { ...this.SYSTEM_ROLES };
+  }
+
+  /**
    * Check if user has specific permission
    */
   static async userHasPermission(
@@ -278,22 +260,21 @@ export class RoleService {
   ): Promise<boolean> {
     try {
       // Get user's role assignments
-      const userDoc = await admin.firestore()
-        .collection('users')
-        .doc(userId)
-        .get();
+      const userDoc = await getDoc(doc(db, 'users', userId));
       
-      if (!userDoc.exists) return false;
+      if (!userDoc.exists()) return false;
       
       const user = userDoc.data() as User;
       
       // Get user's active role assignments
-      const roleAssignments = await admin.firestore()
-        .collection('user_role_assignments')
-        .where('userId', '==', userId)
-        .where('isActive', '==', true)
-        .where('organizationId', '==', context?.organizationId || user.organizationId)
-        .get();
+      const roleAssignments = await getDocs(
+        query(
+          collection(db, 'user_role_assignments'),
+          where('userId', '==', userId),
+          where('isActive', '==', true),
+          where('organizationId', '==', context?.organizationId || user.organizationId)
+        )
+      );
       
       // Check each role for the permission
       for (const assignmentDoc of roleAssignments.docs) {
@@ -305,12 +286,9 @@ export class RoleService {
         }
         
         // Get role details
-        const roleDoc = await admin.firestore()
-          .collection('roles')
-          .doc(assignment.roleId)
-          .get();
+        const roleDoc = await getDoc(doc(db, 'roles', assignment.roleId));
         
-        if (!roleDoc.exists) continue;
+        if (!roleDoc.exists()) continue;
         
         const role = roleDoc.data() as Role;
         
@@ -350,25 +328,21 @@ export class RoleService {
       roleId: params.roleId,
       organizationId: params.organizationId,
       assignedBy: params.assignedBy,
-      assignedAt: admin.firestore.Timestamp.now(),
-      expiresAt: params.expiresAt ? 
-        admin.firestore.Timestamp.fromDate(params.expiresAt) : undefined,
+      assignedAt: Timestamp.now(),
+      expiresAt: params.expiresAt ? Timestamp.fromDate(params.expiresAt) : undefined,
       isActive: true,
       context: params.context
     };
     
-    const assignmentRef = admin.firestore()
-      .collection('user_role_assignments')
-      .doc();
-    
-    await assignmentRef.set(assignment);
+    const assignmentRef = doc(collection(db, 'user_role_assignments'));
+    await setDoc(assignmentRef, assignment);
     
     // Update user's cached permissions
     await this.updateUserPermissionsCache(params.userId);
     
     // Log the role assignment
     await AuditLogger.log({
-      action: 'role_assigned',
+      action: 'role_assigned' as AuditAction,
       userId: params.assignedBy,
       targetUserId: params.userId,
       details: {
@@ -402,7 +376,7 @@ export class RoleService {
     // Check permission dependencies
     await this.validatePermissionDependencies(params.permissions);
     
-    const roleRef = admin.firestore().collection('roles').doc();
+    const roleRef = doc(collection(db, 'roles'));
     
     const role: Role = {
       id: roleRef.id,
@@ -414,15 +388,15 @@ export class RoleService {
       isActive: true,
       permissions: params.permissions,
       constraints: params.constraints,
-      createdAt: admin.firestore.Timestamp.now(),
-      updatedAt: admin.firestore.Timestamp.now(),
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
       createdBy: params.createdBy
     };
     
-    await roleRef.set(role);
+    await setDoc(roleRef, role);
     
     await AuditLogger.log({
-      action: 'role_created',
+      action: 'role_created' as AuditAction,
       userId: params.createdBy,
       details: {
         roleId: roleRef.id,
@@ -453,37 +427,39 @@ export class RoleService {
   }
 
   /**
-   * Update user's cached permissions in custom claims
+   * Update user's cached permissions in Firebase Auth custom claims
    */
   private static async updateUserPermissionsCache(userId: string): Promise<void> {
     const permissions = await this.getUserPermissions(userId);
     
-    await admin.auth().setCustomUserClaims(userId, {
+    // Note: This would require Firebase Admin SDK for setting custom claims
+    // For now, we'll store permissions in the user document
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
       permissions: permissions,
-      lastUpdated: Date.now()
+      lastPermissionUpdate: Timestamp.now()
     });
   }
 
   /**
-   * Get all permissions for a user across all roles
+   * Get all permissions for a user across all roles (PUBLIC METHOD)
    */
-  private static async getUserPermissions(userId: string): Promise<string[]> {
-    const userDoc = await admin.firestore()
-      .collection('users')
-      .doc(userId)
-      .get();
+  static async getUserPermissions(userId: string): Promise<string[]> {
+    const userDoc = await getDoc(doc(db, 'users', userId));
     
-    if (!userDoc.exists) return [];
+    if (!userDoc.exists()) return [];
     
     const user = userDoc.data() as User;
     
     // Get active role assignments
-    const assignments = await admin.firestore()
-      .collection('user_role_assignments')
-      .where('userId', '==', userId)
-      .where('isActive', '==', true)
-      .where('organizationId', '==', user.organizationId)
-      .get();
+    const assignments = await getDocs(
+      query(
+        collection(db, 'user_role_assignments'),
+        where('userId', '==', userId),
+        where('isActive', '==', true),
+        where('organizationId', '==', user.organizationId)
+      )
+    );
     
     const allPermissions = new Set<string>();
     
@@ -496,12 +472,9 @@ export class RoleService {
       }
       
       // Get role permissions
-      const roleDoc = await admin.firestore()
-        .collection('roles')
-        .doc(assignment.roleId)
-        .get();
+      const roleDoc = await getDoc(doc(db, 'roles', assignment.roleId));
       
-      if (roleDoc.exists) {
+      if (roleDoc.exists()) {
         const role = roleDoc.data() as Role;
         role.permissions.forEach(permission => allPermissions.add(permission));
       }
@@ -509,4 +482,125 @@ export class RoleService {
     
     return Array.from(allPermissions);
   }
+
+  /**
+   * Initialize system roles for an organization
+   */
+  static async initializeSystemRoles(organizationId: string, createdBy: string): Promise<void> {
+    for (const [roleKey, roleData] of Object.entries(this.SYSTEM_ROLES)) {
+      const roleRef = doc(collection(db, 'roles'));
+      
+      const role: Role = {
+        id: roleRef.id,
+        name: roleData.name,
+        displayName: roleData.displayName,
+        description: roleData.description,
+        organizationId,
+        isSystemRole: true,
+        isActive: true,
+        permissions: roleData.permissions,
+        constraints: roleData.constraints,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        createdBy
+      };
+      
+      await setDoc(roleRef, role);
+    }
+  }
+
+  /**
+   * Get user's role assignments
+   */
+  static async getUserRoleAssignments(userId: string, organizationId: string): Promise<UserRoleAssignment[]> {
+    const assignments = await getDocs(
+      query(
+        collection(db, 'user_role_assignments'),
+        where('userId', '==', userId),
+        where('organizationId', '==', organizationId),
+        where('isActive', '==', true)
+      )
+    );
+    
+    return assignments.docs.map(doc => doc.data() as UserRoleAssignment);
+  }
+
+  static async getAllRoles(organizationId: string): Promise<Role[]> {
+    const rolesSnap = await getDocs(
+      query(
+        collection(db, 'roles'),
+        where('organizationId', '==', organizationId)
+      )
+    );
+    return rolesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Role));
+  }
+
+  /**
+   * Check role constraints for a user
+   */
+  static async checkRoleConstraints(
+    userId: string, 
+    action: string, 
+    context?: any
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      return { allowed: false, reason: 'User not found' };
+    }
+
+    const user = userDoc.data() as User;
+    const assignments = await this.getUserRoleAssignments(userId, user.organizationId);
+
+    for (const assignment of assignments) {
+      const roleDoc = await getDoc(doc(db, 'roles', assignment.roleId));
+      if (!roleDoc.exists()) continue;
+
+      const role = roleDoc.data() as Role;
+      if (!role.constraints) continue;
+
+      // Check specific constraints based on action
+      switch (action) {
+        case 'create_baby_profile':
+          if (role.constraints.maxBabyProfiles) {
+            const currentCount = user.managedBabyProfiles.length;
+            if (currentCount >= role.constraints.maxBabyProfiles) {
+              return { 
+                allowed: false, 
+                reason: `Maximum baby profiles limit reached (${role.constraints.maxBabyProfiles})` 
+              };
+            }
+          }
+          break;
+
+        case 'export_data':
+          if (role.constraints.allowExport === false) {
+            return { allowed: false, reason: 'Data export not allowed for this role' };
+          }
+          break;
+
+        case 'time_access':
+          if (role.constraints.restrictedTimeAccess) {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentDay = now.getDay();
+            const restrictions = role.constraints.restrictedTimeAccess;
+            
+            if (!restrictions.daysOfWeek.includes(currentDay)) {
+              return { allowed: false, reason: 'Access not allowed on this day' };
+            }
+            
+            const startHour = parseInt(restrictions.startTime.split(':')[0]);
+            const endHour = parseInt(restrictions.endTime.split(':')[0]);
+            
+            if (currentHour < startHour || currentHour > endHour) {
+              return { allowed: false, reason: 'Access not allowed at this time' };
+            }
+          }
+          break;
+      }
+    }
+
+    return { allowed: true };
+  }
 }
+

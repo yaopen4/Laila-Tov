@@ -21,8 +21,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-import { LogOut, LayoutDashboard, MailPlus } from 'lucide-react';
-import { onAuthChange, signOut as firebaseLogout, isAdminUser, type AuthUser } from '@/services/authService';
+import { LogOut, LayoutDashboard, MailPlus, Users, Shield, FileText, Settings, UserCheck, TestTube, ClipboardCheck, FileCode } from 'lucide-react';
+import { AuthService, type AuthUser } from '@/services/authService';
 import { useToast } from '@/hooks/use-toast';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -35,30 +35,45 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   // Client-side route protection:
   // Redirect to login if not authenticated as an admin.
   useEffect(() => {
-    const unsubscribe = onAuthChange((user) => {
-      setCurrentUser(user);
-      setIsLoadingAuth(false);
-      if (!user || !isAdminUser(user)) {
-        toast({
-            title: "גישה נדחתה",
-            description: "עליך להתחבר כמנהל מערכת כדי לצפות בדף זה.",
-            variant: "destructive"
-        });
+    const checkAuth = async () => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        setCurrentUser(user);
+        setIsLoadingAuth(false);
+        if (!user || user.role !== 'admin') {
+          toast({
+              title: "גישה נדחתה",
+              description: "עליך להתחבר כמנהל מערכת כדי לצפות בדף זה.",
+              variant: "destructive"
+          });
+          router.push('/');
+        }
+      } catch (error) {
+        console.error("Auth check error:", error);
+        setIsLoadingAuth(false);
         router.push('/');
       }
-    });
-    return () => unsubscribe();
+    };
+
+    checkAuth();
   }, [router, toast]);
 
   // Navigation items for the admin sidebar
   const navItems = [
     { href: "/admin/dashboard", label: "לוח בקרה", icon: LayoutDashboard },
-    { href: "/admin/invites", label: "ניהול הזמנות", icon: MailPlus },
+    { href: "/admin/users", label: "ניהול משתמשים", icon: Users },
+    { href: "/admin/roles", label: "ניהול תפקידים", icon: Shield },
+    { href: "/admin/manual-invitations", label: "הזמנות ידניות", icon: ClipboardCheck },
+    { href: "/admin/email-invitations", label: "הזמנות אימייל", icon: MailPlus },
+    { href: "/admin/email-templates", label: "תבניות אימייל", icon: FileCode },
+    { href: "/admin/audit", label: "יומן ביקורת", icon: FileText },
+    { href: "/admin/settings", label: "הגדרות מערכת", icon: Settings },
+    { href: "/admin/test-manual-invitations", label: "בדיקת הזמנות ידניות", icon: TestTube },
   ];
 
   const handleLogout = async () => {
     try {
-      await firebaseLogout();
+      await AuthService.signOut();
       toast({ title: "התנתקת בהצלחה" });
       router.push('/');
     } catch (error) {
@@ -71,7 +86,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     return <div className="flex justify-center items-center min-h-screen"><p>טוען...</p></div>;
   }
 
-  if (!currentUser || !isAdminUser(currentUser)) {
+  if (!currentUser || currentUser.role !== 'admin') {
     return null; // Render nothing while redirecting
   }
   

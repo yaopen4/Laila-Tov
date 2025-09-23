@@ -185,11 +185,11 @@ The platform addresses the critical need for structured sleep data collection an
 - Coach recommendation system
 - Basic dashboard views
 
-#### Phase 2 (Enhanced Features)
+#### Phase 2 (Advanced Features)
 - Advanced analytics and reporting
 - Data export capabilities
 - Mobile application
-- Enhanced security features
+- Advanced security features
 - Performance optimizations
 
 #### Phase 3 (Advanced Features)
@@ -205,11 +205,12 @@ The platform addresses the critical need for structured sleep data collection an
 
 ### 5.1 Technology Stack
 - **Frontend**: Next.js 15.2.3, React 18.3.1, TypeScript
-- **Backend**: Firebase (Authentication, Firestore)
+- **Backend**: Firebase (Authentication, Firestore with Security Rules)
 - **UI Framework**: ShadCN UI, Tailwind CSS
 - **State Management**: TanStack Query
 - **Validation**: Zod
 - **Build Tools**: Next.js with Turbopack
+- **Security**: Firestore Rules with Multi-tenant Support
 
 ### 5.2 External Dependencies
 - Firebase services (Authentication, Firestore, Hosting)
@@ -231,6 +232,17 @@ The platform addresses the critical need for structured sleep data collection an
 - Integration requirements with existing systems
 
 ---
+
+## 6. Style Guidelines
+
+- Primary color: Soft, desaturated lavender (#D0BFFF) to evoke a sense of calm and restfulness, inspired by the imagery of night and sleep.
+- Background color: Very light gray (#F5F5F5), creating a clean and neutral backdrop that does not distract from the data.
+- Accent color: Muted blue (#A0C4FF), used for interactive elements and highlights, complementing the lavender to enhance the tranquil feel.
+- Clean and readable Hebrew font.
+- Mobile-first, responsive design.
+- Use soft, rounded icons.
+
+
 <!--
 ## 6. Success Metrics
 

@@ -8,8 +8,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AddBabyForm, type BabyFormData } from '@/components/coach/add-baby-form';
-import { getBabyByIdFromFirestore, updateBabyInFirestore, archiveBabyInFirestore, type Baby } from '@/services/babyService';
-import { updateInviteInFirestore } from '@/services/inviteService';
+import { BabyService } from '@/services/babyService';
+import { AuthService } from '@/services/authService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Archive as ArchiveIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ export default function EditBabyPage() {
   const router = useRouter();
   const { toast } = useToast();
   const babyId = params.babyId as string;
-  const [baby, setBaby] = useState<Baby | null | undefined>(undefined); // undefined: loading, null: not found
+  const [baby, setBaby] = useState<any | null | undefined>(undefined); // undefined: loading, null: not found
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -41,7 +41,7 @@ export default function EditBabyPage() {
     if (babyId) {
       setIsLoading(true);
       try {
-        const foundBaby = await getBabyByIdFromFirestore(babyId);
+        const foundBaby = await BabyService.getBabyProfile(babyId);
         setBaby(foundBaby);
       } catch (error) {
         console.error("Error fetching baby data:", error);
@@ -72,26 +72,8 @@ export default function EditBabyPage() {
     setIsSubmitting(true);
     
     try {
-      // 1. Update the Baby document
-      const parentEmails = [values.parentEmail1, values.parentEmail2].filter((email): email is string => !!email);
-      const updatedBabyData: Partial<Omit<Baby, 'id'>> = {
-          name: values.name,
-          familyName: values.familyName,
-          age: values.age,
-          motherName: values.motherName,
-          fatherName: values.fatherName,
-          siblingsCount: values.siblingsCount,
-          siblingsNames: values.siblingsNames,
-          description: values.description,
-          coachNotes: values.coachNotes,
-          parentEmails: parentEmails,
-      };
-      await updateBabyInFirestore(id, updatedBabyData);
-
-      // 2. Update the corresponding Invite document with the new emails
-      if (baby.inviteCode) {
-        await updateInviteInFirestore(baby.inviteCode, { parentEmails });
-      }
+      // Update the baby profile using service
+      await BabyService.updateBabyProfile(id, values);
 
       toast({
         title: "פרטי תינוק עודכנו!",
@@ -118,7 +100,7 @@ export default function EditBabyPage() {
     if (!babyId || !baby) return;
     setIsSubmitting(true);
     try {
-      await archiveBabyInFirestore(babyId);
+      await BabyService.archiveBabyProfile(babyId);
       toast({
         title: "תינוק הועבר לארכיון",
         description: `${baby.name} ${baby.familyName} הועבר בהצלחה לארכיון.`

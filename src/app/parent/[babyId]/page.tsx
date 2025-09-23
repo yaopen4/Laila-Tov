@@ -10,15 +10,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { onSnapshot, doc, collection, query, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Baby, SleepRecord, SleepRecordFormData } from '@/types';
-import { 
-  getBabyByIdFromFirestore, // Using this new function for direct ID lookup
-  getBabyByParentUsernameFromFirestore, 
-  addSleepRecordToFirestore,
-  updateSleepRecordInFirestore,
-  deleteSleepRecordFromFirestore,
-  getSleepRecordsForBabyFromFirestore
-} from '@/services/babyService';
+import type { BabyProfile } from '@/types/auth';
+import { BabyService } from '@/services/babyService';
+import { AuthService } from '@/services/authService';
 import { SleepDataForm } from '@/components/parent/sleep-data-form';
 import CoachRecommendationsDisplay from '@/components/parent/coach-recommendations-display';
 import AppLogo from '@/components/shared/app-logo';
@@ -47,23 +41,23 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { onAuthChange, signOut as firebaseLogout, isParentUser, isCoachUser, type AuthUser } from '@/services/authService';
+import { AuthService as AuthServiceTypeOnly, type AuthUser } from '@/services/authService';
 import { Skeleton } from '@/components/ui/skeleton';
 
 
 export default function ParentBabyPage() {
   const params = useParams();
   const router = useRouter();
-  const babyId = params.babyId as string; // This is the parentUsername
-  const [baby, setBaby] = useState<Baby | null>(null);
-  const [sleepRecords, setSleepRecords] = useState<SleepRecord[]>([]);
+  const babyId = params.babyId as string; // This is the baby profile ID
+  const [baby, setBaby] = useState<BabyProfile | null>(null);
+  const [sleepRecords, setSleepRecords] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const { toast } = useToast();
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [recordToEdit, setRecordToEdit] = useState<SleepRecord | null>(null);
+  const [recordToEdit, setRecordToEdit] = useState<any | null>(null);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [recordToDeleteId, setRecordToDeleteId] = useState<string | null>(null);
@@ -73,54 +67,57 @@ export default function ParentBabyPage() {
 
   // Auth check and initial data fetching
   useEffect(() => {
-    const unsubscribeAuth = onAuthChange(async (user) => {
-      setCurrentUser(user);
-      setIsAuthLoading(false);
-      if (user) {
-        // A coach is authorized if they are a coach.
-        // A parent is authorized if their linked babyId matches the one in the URL.
-        const isAuthorized = isCoachUser(user) || isParentUser(user, babyId);
+    const loadData = async () => {
+      try {
+        setIsAuthLoading(true);
+        const user = await AuthService.getCurrentUser();
+        setCurrentUser(user);
+        
+        if (user) {
+          // Check if user has access to this baby profile
+          const isAuthorized = user.role === 'coach' || 
+            (user.role === 'parent' && user.managedBabyProfiles?.includes(babyId)) ||
+            user.role === 'admin';
 
-        if (isAuthorized) {
-          setIsLoading(true);
-          try {
-            let foundBaby: Baby | null = null;
-            if (isCoachUser(user)) {
-              // If the user is a coach, the babyId in the URL is the direct document ID.
-              foundBaby = await getBabyByIdFromFirestore(babyId);
-            } else {
-              // If the user is a parent, the babyId in the URL is the parentUsername.
-              foundBaby = await getBabyByParentUsernameFromFirestore(babyId);
-            }
-
-            if (foundBaby) {
-              setBaby(foundBaby);
-            } else {
-              setBaby(null); 
-              // If a parent can't find their baby, something is wrong. Log them out.
-              // A coach might legitimately land here if they have a bad link, so don't log them out.
-              if (isParentUser(user)) {
-                await firebaseLogout();
-                router.push('/');
+          if (isAuthorized) {
+            setIsLoading(true);
+            try {
+              const foundBaby = await BabyService.getBabyProfile(babyId);
+              if (foundBaby) {
+                setBaby(foundBaby);
+              } else {
+                setBaby(null);
+                // If a parent can't find their baby, something is wrong. Log them out.
+                // A coach might legitimately land here if they have a bad link, so don't log them out.
+                if (user.role === 'parent') {
+                  await AuthService.signOut();
+                  router.push('/');
+                }
               }
+            } catch (error) {
+              console.error("Error fetching initial baby data:", error);
+              toast({ title: "שגיאה בטעינת נתונים", variant: "destructive" });
+            } finally {
+              setIsLoading(false);
             }
-          } catch (error) {
-            console.error("Error fetching initial baby data:", error);
-            toast({ title: "שגיאה בטעינת נתונים", variant: "destructive" });
-          } finally {
-            setIsLoading(false);
+          } else {
+            // Not authorized for this page
+            await AuthService.signOut();
+            router.push('/');
           }
         } else {
-          // Not authorized for this page
-          await firebaseLogout(); 
+          // No user logged in
           router.push('/');
         }
-      } else {
-        // No user logged in
-        router.push('/');
+      } catch (error) {
+        console.error("Error in loadData:", error);
+        setIsAuthLoading(false);
+      } finally {
+        setIsAuthLoading(false);
       }
-    });
-    return () => unsubscribeAuth();
+    };
+
+    loadData();
   }, [babyId, router, toast]);
 
 
@@ -128,10 +125,10 @@ export default function ParentBabyPage() {
   useEffect(() => {
     if (!baby?.id) return;
 
-    const babyDocRef = doc(db, 'babies', baby.id);
+    const babyDocRef = doc(db, 'baby_profiles', baby.id);
     const unsubscribeBaby = onSnapshot(babyDocRef, (docSnap) => {
       if (docSnap.exists()) {
-        setBaby({ id: docSnap.id, ...docSnap.data() } as Baby);
+        setBaby({ id: docSnap.id, ...docSnap.data() } as BabyProfile);
       } else {
         // Baby document might have been deleted
         setBaby(null);
@@ -145,44 +142,46 @@ export default function ParentBabyPage() {
   }, [baby?.id, toast]);
 
 
-  // Real-time listener for Sleep Records
+  // Load sleep records using service
   useEffect(() => {
     if (!baby?.id) {
       setSleepRecords([]); // Clear records if no baby
       return;
     }
     
-    setIsLoading(true); // Show loading for sleep records too
-    const sleepRecordsRef = collection(db, 'babies', baby.id, 'sleepRecords');
-    const q = query(sleepRecordsRef, orderBy('timestamp', 'desc'));
+    const loadSleepRecords = async () => {
+      try {
+        setIsLoading(true);
+        const records = await BabyService.getSleepRecordsForBaby(baby.id);
+        setSleepRecords(records);
+      } catch (error) {
+        console.error("Error loading sleep records:", error);
+        toast({ title: "שגיאה בטעינת רשומות שינה", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    const unsubscribeSleep = onSnapshot(q, (querySnapshot) => {
-      const records = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as SleepRecord));
-      setSleepRecords(records);
-      setIsLoading(false);
-    }, (error) => {
-      console.error("Error listening to sleep records:", error);
-      toast({ title: "שגיאה בעדכון רשומות שינה", variant: "destructive" });
-      setIsLoading(false);
-    });
-
-    return () => unsubscribeSleep();
+    loadSleepRecords();
   }, [baby?.id, toast]);
 
 
   /**
    * Handles submission of a new sleep record.
-   * @param {SleepRecordFormData} data - The submitted sleep record form data.
+   * @param {any} data - The submitted sleep record form data.
    */
-  const handleAddNewFormSubmit = async (data: SleepRecordFormData) => {
+  const handleAddNewFormSubmit = async (data: any) => {
     if (!baby) return;
     setIsProcessing(true);
     try {
-      await addSleepRecordToFirestore(baby.id, data);
+      await BabyService.addSleepRecord(baby.id, data);
       toast({
         title: "נתוני שינה נשמרו!",
         description: `הנתונים עבור ${baby.name} נשלחו בהצלחה.`,
       });
+      // Reload sleep records
+      const records = await BabyService.getSleepRecordsForBaby(baby.id);
+      setSleepRecords(records);
     } catch (error) {
       console.error("Error adding sleep record:", error);
       toast({ title: "שגיאה בשמירת נתונים", variant: "destructive" });
@@ -193,28 +192,31 @@ export default function ParentBabyPage() {
 
   /**
    * Handles clicking the edit button for a sleep record.
-   * @param {SleepRecord} record - The sleep record to edit.
+   * @param {any} record - The sleep record to edit.
    */
-  const handleEditRecordClick = (record: SleepRecord) => {
+  const handleEditRecordClick = (record: any) => {
     setRecordToEdit(record);
     setIsEditDialogOpen(true);
   };
 
   /**
    * Handles submission of an edited sleep record.
-   * @param {SleepRecordFormData} data - The updated sleep record form data.
+   * @param {any} data - The updated sleep record form data.
    */
-  const handleEditFormSubmit = async (data: SleepRecordFormData) => {
+  const handleEditFormSubmit = async (data: any) => {
     if (!recordToEdit || !baby) return;
     setIsProcessing(true);
     try {
-      await updateSleepRecordInFirestore(baby.id, recordToEdit.id, data);
+      await BabyService.updateSleepRecord(baby.id, recordToEdit.id, data);
       toast({
         title: "נתוני שינה עודכנו!",
         description: `הנתונים עודכנו בהצלחה.`,
       });
       setIsEditDialogOpen(false);
       setRecordToEdit(null);
+      // Reload sleep records
+      const records = await BabyService.getSleepRecordsForBaby(baby.id);
+      setSleepRecords(records);
     } catch (error) {
       console.error("Error updating sleep record:", error);
       toast({ title: "שגיאה בעדכון נתונים", variant: "destructive" });
@@ -237,11 +239,14 @@ export default function ParentBabyPage() {
     if (!baby || !recordToDeleteId) return;
     setIsProcessing(true);
     try {
-      await deleteSleepRecordFromFirestore(baby.id, recordToDeleteId);
+      await BabyService.deleteSleepRecord(baby.id, recordToDeleteId);
       toast({
         title: "רשומה נמחקה",
         description: "רשומת השינה נמחקה בהצלחה.",
       });
+      // Reload sleep records
+      const records = await BabyService.getSleepRecordsForBaby(baby.id);
+      setSleepRecords(records);
     } catch (error) {
       console.error("Error deleting sleep record:", error);
       toast({ title: "שגיאה במחיקה", variant: "destructive" });
@@ -255,7 +260,7 @@ export default function ParentBabyPage() {
   const handleLogout = async () => {
     setIsProcessing(true);
     try {
-      await firebaseLogout();
+      await AuthService.signOut();
       toast({ title: "התנתקת בהצלחה" });
       router.push('/');
     } catch (error) {
@@ -321,7 +326,7 @@ export default function ParentBabyPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {latestRecord.sleepCycles.map((cycle, index) => (
+            {latestRecord.sleepCycles.map((cycle: any, index: number) => (
               <div key={cycle.id || index} className="p-3 border rounded-md bg-background">
                 <h4 className="font-semibold mb-1">מחזור שינה {index + 1}</h4>
                 <p className="text-sm"><strong>שעת השכבה:</strong> {cycle.bedtime}</p>
@@ -331,7 +336,7 @@ export default function ParentBabyPage() {
                 <p className="text-sm"><strong>שעת יקיצה:</strong> {cycle.wakeTime || '-'}</p>
               </div>
             ))}
-            {!isCoachUser(currentUser) && ( // Only show edit/delete to the parent, not the coach on this view
+            {!(currentUser?.role === 'coach') && ( // Only show edit/delete to the parent, not the coach on this view
             <div className="flex gap-2 mt-4">
               <Button variant="outline" size="sm" onClick={() => latestRecord && handleEditRecordClick(latestRecord)} disabled={isProcessing}>
                 <Edit3 className="me-2 h-4 w-4" />
@@ -418,7 +423,7 @@ export default function ParentBabyPage() {
                 </CardHeader>
                 <CardContent className="space-y-3 px-4 pb-4">
                   {record.sleepCycles.length > 0 ? (
-                    record.sleepCycles.map((cycle, index) => (
+                    record.sleepCycles.map((cycle: any, index: number) => (
                       <div key={cycle.id || index} className="p-3 border rounded-md bg-background/50">
                         <h4 className="font-semibold mb-1">מחזור שינה {index + 1}</h4>
                         <p className="text-sm"><strong>שעת השכבה:</strong> {cycle.bedtime}</p>

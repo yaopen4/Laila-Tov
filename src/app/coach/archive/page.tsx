@@ -6,12 +6,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Baby } from '@/types';
-import { 
-  getArchivedBabiesFromFirestore, 
-  unarchiveBabyInFirestore, 
-  deleteBabyPermanentlyFromFirestore 
-} from '@/services/babyService';
+import { BabyService } from '@/services/babyService';
 import {
   Table,
   TableBody,
@@ -29,7 +24,7 @@ import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 import Link from 'next/link';
 import { Card, CardContent } from "@/components/ui/card";
-import { onAuthChange, type AuthUser } from '@/services/authService';
+import { AuthService, type AuthUser } from '@/services/authService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,21 +37,26 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function ArchivePage() {
-  const [archivedBabies, setArchivedBabies] = useState<Baby[]>([]);
+  const [archivedBabies, setArchivedBabies] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [babyToDelete, setBabyToDelete] = useState<Baby | null>(null);
+  const [babyToDelete, setBabyToDelete] = useState<any | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
 
   // Get the currently authenticated user
   useEffect(() => {
-    const unsubscribe = onAuthChange((user) => {
-      setCurrentUser(user);
-    });
-    return () => unsubscribe();
+    const loadUser = async () => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error("Error loading user:", error);
+      }
+    };
+    loadUser();
   }, []);
 
   /**
@@ -67,18 +67,8 @@ export default function ArchivePage() {
     
     setIsLoading(true);
     try {
-      const babies = await getArchivedBabiesFromFirestore(currentUser.uid);
-      // Sort on the client to handle potential null or undefined dates gracefully
-      const sortedBabies = babies.sort((a, b) => {
-        if (a.dateArchived && b.dateArchived) {
-          // Both dates are valid strings, so compare them
-          return new Date(b.dateArchived).getTime() - new Date(a.dateArchived).getTime();
-        }
-        if (a.dateArchived) return -1; // a is valid, b is not, so a comes first
-        if (b.dateArchived) return 1;  // b is valid, a is not, so b comes first
-        return 0; // Neither has a date, so keep original order
-      });
-      setArchivedBabies(sortedBabies);
+        const babies = await BabyService.getArchivedBabiesForCoach(currentUser.uid);
+      setArchivedBabies(babies);
     } catch (error) {
       console.error("Error fetching archived babies:", error);
       toast({
@@ -105,7 +95,7 @@ export default function ArchivePage() {
   const handleUnarchive = async (babyId: string, babyName: string) => {
     setIsProcessing(true);
     try {
-      await unarchiveBabyInFirestore(babyId);
+      await BabyService.unarchiveBabyProfile(babyId);
       toast({
         title: "תינוק שוחזר מהארכיון",
         description: `${babyName} הועבר בהצלחה לרשימת התינוקות הפעילים.`,
@@ -125,9 +115,9 @@ export default function ArchivePage() {
 
   /**
    * Opens the confirmation dialog for permanent deletion.
-   * @param {Baby} baby - The baby object to be deleted.
+   * @param {any} baby - The baby object to be deleted.
    */
-  const openDeleteDialog = (baby: Baby) => {
+  const openDeleteDialog = (baby: any) => {
     setBabyToDelete(baby);
     setIsDeleteDialogOpen(true);
   };
@@ -139,7 +129,7 @@ export default function ArchivePage() {
     if (!babyToDelete) return;
     setIsProcessing(true);
     try {
-      await deleteBabyPermanentlyFromFirestore(babyToDelete.id);
+      await BabyService.deleteBabyProfile(babyToDelete.id);
       toast({
         title: "תינוק נמחק לצמיתות",
         description: `התינוק ${babyToDelete.name} ${babyToDelete.familyName} נמחק מהמערכת.`,

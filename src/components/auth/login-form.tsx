@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardDescription, CardFooter } from "@/co
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
-import { loginWithEmail, sendPasswordReset, type AuthUser } from '@/services/authService';
+import { AuthService, type AuthUser } from '@/services/authService';
 import { Separator } from '../ui/separator';
 
 
@@ -22,8 +22,8 @@ const getRedirectPath = (user: AuthUser): string => {
     return '/admin/dashboard';
   } else if (user.role === 'coach') {
     return '/coach/dashboard';
-  } else if (user.role === 'parent' && user.parentUsername) {
-    return `/parent/${user.parentUsername}`;
+  } else if (user.role === 'parent' && user.managedBabyProfiles && user.managedBabyProfiles.length > 0) {
+    return `/parent/${user.managedBabyProfiles[0]}`;
   }
   console.warn("Could not determine redirect path for user:", user);
   return '/';
@@ -48,7 +48,7 @@ const LoginForm: FC = () => {
     }
 
     try {
-      const loggedInUser = await loginWithEmail(email.toLowerCase(), password);
+      const loggedInUser = await AuthService.loginWithEmail(email.toLowerCase(), password);
 
       if (!loggedInUser || !loggedInUser.role) {
          toast({
@@ -71,7 +71,7 @@ const LoginForm: FC = () => {
         return;
       }
 
-      toast({ title: "התחברות הצליחה", description: `ברוך הבא, ${loggedInUser.name || loggedInUser.email}!` });
+      toast({ title: "התחברות הצליחה", description: `ברוך הבא, ${loggedInUser.displayName || loggedInUser.email}!` });
       router.push(getRedirectPath(loggedInUser));
 
     } catch (error: any) {
@@ -99,7 +99,7 @@ const LoginForm: FC = () => {
       return;
     }
     try {
-      await sendPasswordReset(email);
+      await AuthService.sendPasswordReset(email);
       toast({ title: "קישור לאיפוס נשלח", description: "בדוק את תיבת הדואר שלך." });
     } catch (error: any) {
       console.error('Password reset error:', error);

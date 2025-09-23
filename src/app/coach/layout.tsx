@@ -22,9 +22,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppLogo from "@/components/shared/app-logo";
-import { LogOut, UserPlus, Users, Archive, FileText, FileSpreadsheet, User } from 'lucide-react';
+import { LogOut, UserPlus, Users, Archive, FileText, FileSpreadsheet, User, Baby, Calendar, BarChart3, Settings } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { onAuthChange, signOut as firebaseLogout, isCoachUser, type AuthUser } from '@/services/authService';
+import { AuthService, type AuthUser } from '@/services/authService';
 import { useToast } from '@/hooks/use-toast';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
@@ -37,21 +37,33 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
   // Client-side route protection:
   // Redirect to login if not authenticated as a coach.
   useEffect(() => {
-    const unsubscribe = onAuthChange((user) => {
-      setCurrentUser(user);
-      setIsLoadingAuth(false);
-      if (!user || !isCoachUser(user)) {
+    const checkAuth = async () => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        setCurrentUser(user);
+        setIsLoadingAuth(false);
+        if (!user || user.role !== 'coach') {
+          router.push('/');
+        }
+      } catch (error) {
+        console.error("Auth check error:", error);
+        setIsLoadingAuth(false);
         router.push('/');
       }
-    });
-    return () => unsubscribe();
+    };
+
+    checkAuth();
   }, [router]);
 
   // Navigation items for the consultant sidebar
   const navItems = [
     { href: "/coach/dashboard", label: "לוח בקרה", icon: Users },
     { href: "/coach/add-baby", label: "הוספת תינוק", icon: UserPlus },
+    { href: "/coach/babies", label: "ניהול תינוקות", icon: Baby },
+    { href: "/coach/calendar", label: "יומן פגישות", icon: Calendar },
+    { href: "/coach/reports", label: "דוחות וניתוח", icon: BarChart3 },
     { href: "/coach/archive", label: "ארכיון", icon: Archive },
+    { href: "/coach/settings", label: "הגדרות", icon: Settings },
   ];
 
   /**
@@ -60,7 +72,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
    */
   const handleLogout = async () => {
     try {
-      await firebaseLogout();
+      await AuthService.signOut();
       toast({ title: "התנתקת בהצלחה" });
       router.push('/');
     } catch (error) {
@@ -76,7 +88,7 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
 
   // If user is null after auth check or not a coach, content will not render due to redirect.
   // This check can be an additional safeguard or for cases where redirect hasn't completed.
-  if (!currentUser || !isCoachUser(currentUser)) {
+  if (!currentUser || currentUser.role !== 'coach') {
     return null;
   }
   

@@ -14,15 +14,16 @@ import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus } from 'lucide-react';
 import { Separator } from "@/components/ui/separator";
-import { registerWithEmailAndInvite, type AuthUser } from '@/services/authService';
+import { AuthService, type AuthUser } from '@/services/authService';
+import { InvitationService } from '@/services/invitationService';
 
 const getRedirectPath = (user: AuthUser): string => {
   if (user.role === 'admin') {
     return '/admin/dashboard';
   } else if (user.role === 'coach') {
     return '/coach/dashboard';
-  } else if (user.role === 'parent' && user.parentUsername) {
-    return `/parent/${user.parentUsername}`;
+  } else if (user.role === 'parent' && user.managedBabyProfiles && user.managedBabyProfiles.length > 0) {
+    return `/parent/${user.managedBabyProfiles[0]}`;
   }
   console.warn("Could not determine redirect path for user:", user);
   return '/';
@@ -34,6 +35,7 @@ const SignUpForm: FC = () => {
   const [inviteCode, setInviteCode] = useState('');
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<{ state: 'idle' | 'validating' | 'valid' | 'invalid'; message?: string }>({ state: 'idle' });
   const router = useRouter();
   const { toast } = useToast();
 
@@ -54,18 +56,36 @@ const SignUpForm: FC = () => {
     setIsLoading(true);
 
     try {
-      // Use the new registration function that handles all validation
-      const authUser = await registerWithEmailAndInvite(
+      // Prevalidate invitation
+      setInviteStatus({ state: 'validating' });
+      const validator = new InvitationService();
+      const pre = await validator.prevalidateInvitation(inviteCode, email);
+      if (!pre.isValid) {
+        setInviteStatus({ state: 'invalid', message: pre.reason || 'קוד הזמנה לא תקין' });
+        throw new Error(pre.reason || 'Invalid invitation');
+      }
+      setInviteStatus({ state: 'valid' });
+
+      // Use authentication service
+      const result = await AuthService.registerWithInvitation(
+        inviteCode,
         email,
         password,
-        name,
-        inviteCode
+        name
       );
+      
+      if (!result.success || !result.user) {
+        throw new Error(result.error || 'Registration failed');
+      }
+      
+      const authUser = result.user;
       
       // Determine welcome message based on role
       const welcomeMessage = authUser.role === 'parent' 
         ? `ברוך הבא! חשבונך כהורה פעיל כעת.` 
-        : `ברוכה הבאה, ${name}! חשבונך כיועצת פעיל כעת.`;
+        : authUser.role === 'coach'
+        ? `ברוכה הבאה, ${name}! חשבונך כיועצת פעיל כעת.`
+        : `ברוך הבא, ${name}! חשבונך כמנהל מערכת פעיל כעת.`;
       
       toast({ title: "רישום הושלם!", description: welcomeMessage });
       
@@ -83,17 +103,36 @@ const SignUpForm: FC = () => {
         message = "קוד ההזמנה שהוזן אינו תקין או שכתובת האימייל אינה תואמת להזמנה.";
       } else if (error.message?.includes('expired')) {
         message = "ההזמנה פגה.";
-      } else if (error.message?.includes('revoked')) {
+      } else if (error.message?.includes('revoked') || error.message?.includes('cancelled')) {
         message = "ההזמנה בוטלה.";
-      } else if (error.message?.includes('fully redeemed')) {
-        message = "קוד הזמנה זה כבר נוצל במלואו.";
+      } else if (error.message?.includes('fully redeemed') || error.message?.includes('already been accepted')) {
+        message = "קוד הזמנה זה כבר נוצל.";
       } else if (error.message?.includes('Failed to activate')) {
         message = "נכשל בהפעלת החשבון. אנא נסה שוב או פנה לתמיכה.";
+      } else if (error.message?.includes('User with this email already exists')) {
+        message = "משתמש עם כתובת אימייל זו כבר קיים במערכת.";
       }
       
       toast({ title: "שגיאה ברישום", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Live validation on blur of invitation code
+  const handleInviteBlur = async () => {
+    if (!inviteCode || !email) return;
+    setInviteStatus({ state: 'validating' });
+    try {
+      const validator = new InvitationService();
+      const pre = await validator.prevalidateInvitation(inviteCode, email);
+      if (pre.isValid) {
+        setInviteStatus({ state: 'valid' });
+      } else {
+        setInviteStatus({ state: 'invalid', message: pre.reason });
+      }
+    } catch (err) {
+      setInviteStatus({ state: 'invalid', message: 'שגיאה בבדיקת הקוד' });
     }
   };
 
@@ -147,11 +186,21 @@ const SignUpForm: FC = () => {
               <Input
                 id="signup-invite-code"
                 type="text"
-                placeholder="הקוד שקיבלת במייל או מהיועצת"
+                placeholder="הקוד שקיבלת מהיועצת או המנהל"
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
+                onBlur={handleInviteBlur}
                 required
               />
+              {inviteStatus.state === 'validating' && (
+                <p className="text-xs text-muted-foreground">בודק את הקוד…</p>
+              )}
+              {inviteStatus.state === 'valid' && (
+                <p className="text-xs text-emerald-600">קוד הזמנה תקין ✔</p>
+              )}
+              {inviteStatus.state === 'invalid' && (
+                <p className="text-xs text-destructive">{inviteStatus.message || 'קוד הזמנה לא תקין'}</p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "יוצר חשבון..." : "הירשם והתחבר"}

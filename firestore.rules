@@ -1,4 +1,3 @@
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -20,6 +19,13 @@ service cloud.firestore {
      */
     function getRole(userId) {
       return get(/databases/$(database)/documents/users/$(userId)).data.role;
+    }
+    
+    /**
+     * Retrieves the organization ID of a specified user.
+     */
+    function getUserOrganization(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.organizationId;
     }
     
     /**
@@ -49,136 +55,460 @@ service cloud.firestore {
         return isAuthenticated() && request.auth.uid == userId;
     }
 
+    /**
+     * Checks if users belong to the same organization
+     */
+    function sameOrganization(userId) {
+      return isAuthenticated() && 
+             getUserOrganization(request.auth.uid) == getUserOrganization(userId);
+    }
+
+    /**
+     * Checks if a baby profile is assigned to the current user
+     */
+    function isBabyAssigned(babyId) {
+      let baby = get(/databases/$(database)/documents/baby_profiles/$(babyId)).data;
+      return request.auth.uid == baby.assignedCoachId || 
+             request.auth.uid in baby.parentIds;
+    }
 
     // ============== COLLECTION RULES ============== //
 
-    // USERS
-    // Defines access rules for user profile documents.
+    // USERS COLLECTION
     match /users/{userId} {
-      // Users can read/update their own profile. Admins can read/update any user (checked in app logic).
-      allow read, update: if isUser(userId) || (userExists(request.auth.uid) && isRole('admin'));
+      // Users can read their own profile, coaches can read assigned users, admins can read all
+      allow read: if isUser(userId) || 
+                     (isRole('coach') && sameOrganization(userId)) ||
+                     isRole('admin');
       
-      // User creation rules - simplified to avoid chicken-and-egg problems
-      allow create: if isAuthenticated() && (
-        // Any authenticated user can create their own user document during registration
-        isUser(userId) ||
-        // Allow placeholder users to be created (for invitation system)
-        userId.matches('placeholder_.*')
-      );
+      // Users can update their own basic profile, admins can update any user
+      allow update: if isUser(userId) && 
+                       !('role' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                       !('organizationId' in request.resource.data.diff(resource.data).affectedKeys()) ||
+                       isRole('admin');
       
-      // Deletion requires admin role (checked safely only if user doc exists)
-      allow delete: if userExists(request.auth.uid) && isRole('admin');
+      // Only admins can create users (through invitation system)
+      allow create: if isRole('admin');
+      
+      // Only admins can delete users
+      allow delete: if isRole('admin');
     }
 
-    // INVITES
-    // Defines who can create, read, and use invitations.
-    match /invites/{inviteId} {
-      // Invites can be read by any authenticated user to check validity.
-      // Assumes frontend handles anonymous sign-in for new users.
-      allow read: if isAuthenticated();
-      // Admins and coaches can create new invites.
-      // Using direct check instead of isRole function to avoid potential issues
-      allow create: if isAuthenticated() && 
-                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach');
-      // Allow updates for:
-      // 1. Parents redeeming invites (usedBy and status fields only)
-      // 2. Admins managing invites (all fields for revocation, etc.)
-      allow update: if isAuthenticated() && (
-        // Parents can update usedBy and status during redemption
-        request.resource.data.diff(resource.data).changedKeys().hasOnly(['usedBy', 'status']) ||
-        // Admins can update any field for invite management (using direct check like create rule)
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-      );
-      // Only admins can delete invites (using direct check for consistency)
-      allow delete: if isAuthenticated() && 
-                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // ORGANIZATIONS COLLECTION
+    match /organizations/{orgId} {
+      // Only organization members can read organization data
+      allow read: if isAuthenticated() && getUserOrganization(request.auth.uid) == orgId;
+      
+      // Only admins can modify organization settings
+      allow write: if isRole('admin') && getUserOrganization(request.auth.uid) == orgId;
     }
 
-    // BABIES
-    // Defines access rules for baby profiles and their subcollections.
+    // ROLES COLLECTION
+    match /roles/{roleId} {
+      // Organization members can read roles
+      allow read: if isAuthenticated() && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only admins can create/modify custom roles (system roles are protected)
+      allow write: if isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId &&
+                      !resource.data.isSystemRole;
+    }
+
+    // USER ROLE ASSIGNMENTS COLLECTION
+    match /user_role_assignments/{assignmentId} {
+      // Users can read their own assignments, admins can read all in organization
+      allow read: if resource.data.userId == request.auth.uid ||
+                     (isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId);
+      
+      // Only admins can create/modify role assignments
+      allow write: if isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId;
+    }
+
+    // ENHANCED INVITATIONS COLLECTION
+    match /invitations/{invitationId} {
+      // Users can read invitations they created or are meant for them
+      allow read: if resource.data.createdBy == request.auth.uid ||
+                     resource.data.email == request.auth.token.email ||
+                     (isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId);
+      
+      // Coaches can create parent invitations, admins can create any invitations
+      allow create: if (isRole('coach') && request.resource.data.role == 'parent' &&
+                       getUserOrganization(request.auth.uid) == request.resource.data.organizationId) ||
+                      (isRole('admin') && 
+                       getUserOrganization(request.auth.uid) == request.resource.data.organizationId);
+      
+      // Users can update invitations they created, or system updates
+      allow update: if resource.data.createdBy == request.auth.uid ||
+                       isRole('admin');
+    }
+
+    // INVITATION TEMPLATES COLLECTION
+    match /invitation_templates/{templateId} {
+      // Organization members can read templates
+      allow read: if isAuthenticated() && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only admins can modify templates
+      allow write: if isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId;
+    }
+
+    // ENHANCED BABY PROFILES COLLECTION  
+    match /baby_profiles/{babyId} {
+      // Assigned coaches, parents, and admins can read
+      allow read: if isBabyAssigned(babyId) ||
+                     (isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId);
+      
+      // Assigned coaches can create and update baby profiles
+      allow create: if isRole('coach') && 
+                       request.resource.data.assignedCoachId == request.auth.uid &&
+                       getUserOrganization(request.auth.uid) == request.resource.data.organizationId;
+      
+      allow update: if (resource.data.assignedCoachId == request.auth.uid && isRole('coach')) ||
+                       (request.auth.uid in resource.data.parentIds && isRole('parent')) ||
+                       isRole('admin');
+      
+      // Only admins can delete baby profiles
+      allow delete: if isRole('admin');
+    }
+
+    // SLEEP RECORDS COLLECTION (subcollection of baby_profiles)
+    match /baby_profiles/{babyId}/sleep_records/{recordId} {
+      // Same access rules as parent baby profile
+      allow read, write: if isBabyAssigned(babyId) ||
+                            (isRole('admin') && 
+                             getUserOrganization(request.auth.uid) == 
+                             get(/databases/$(database)/documents/baby_profiles/$(babyId)).data.organizationId);
+    }
+
+    // AUDIT LOGS COLLECTION (restricted access)
+    match /audit_logs/{logId} {
+      // Only admins and system can read audit logs
+      allow read: if isRole('admin') && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only system can write audit logs (via Cloud Functions)
+      allow write: if false; // All writes handled by server-side functions
+    }
+
+    // SECURITY AUDIT LOGS (highly restricted)
+    match /audit_logs_security/{logId} {
+      // Only system admins can read security logs
+      allow read: if isRole('admin') && resource.data.organizationId == 'system';
+      
+      // Only system can write security audit logs
+      allow write: if false;
+    }
+
+    // COMPLIANCE AUDIT LOGS
+    match /audit_logs_compliance/{logId} {
+      // Only admins can read compliance logs for their organization
+      allow read: if isRole('admin') && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only system can write compliance audit logs
+      allow write: if false;
+    }
+
+    // COMPLIANCE REPORTS COLLECTION
+    match /compliance_reports/{reportId} {
+      // Only admins can read reports for their organization
+      allow read: if isRole('admin') && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only system can create reports
+      allow write: if false;
+    }
+
+    // LEGACY COLLECTIONS SUPPORT (for backward compatibility during transition)
+    
+    // Legacy babies collection (will be migrated to baby_profiles)
     match /babies/{babyId} {
-      // A baby profile can be created by coaches or admins.
-      // Using direct check for consistent permission checking
-      allow create: if isAuthenticated() && 
-                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-                       (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach' ||
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-      
-      // Admins, the assigned coach, or linked parents can read a baby's profile.
-      allow read: if isRole('admin') 
-                    || resource.data.coachId == request.auth.uid 
-                    || request.auth.uid in resource.data.parentIds;
-      
-      // Admins or the assigned coach can delete a baby profile.
-      allow delete: if isRole('admin') || resource.data.coachId == request.auth.uid;
-
-      // Update rules are split for different roles:
-      allow update: if 
-        // Rule 1: Admins and the assigned coach can update any field.
-        (isRole('admin') || resource.data.coachId == request.auth.uid) ||
-        // Rule 2: A parent can ONLY add themselves to the parentIds list.
-        (
-          isAuthenticated() &&
-          // The user's ID must be in the new list of parents.
-          request.auth.uid in request.resource.data.parentIds &&
-          // The new list must be exactly one longer than the old list.
-          request.resource.data.parentIds.size() == resource.data.parentIds.size() + 1 &&
-          // The 'parentIds' field must be the ONLY field being changed.
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['parentIds'])
-        );
-      
-      // SLEEPRECORDS Subcollection
-      // Defines access for sleep data within a baby's profile.
-      match /sleepRecords/{recordId} {
-        // Admins, the coach, or parents can read, create, and update sleep records.
-        allow read, create, update: if isRole('admin')
-                                    || get(/databases/$(database)/documents/babies/$(babyId)).data.coachId == request.auth.uid
-                                    || request.auth.uid in get(/databases/$(database)/documents/babies/$(babyId)).data.parentIds;
-        
-        // Admins, the coach, or parents can delete sleep records.
-        allow delete: if isRole('admin')
-                      || get(/databases/$(database)/documents/babies/$(babyId)).data.coachId == request.auth.uid
-                      || request.auth.uid in get(/databases/$(database)/documents/babies/$(babyId)).data.parentIds;
-      }
+      allow read, write: if resource.data.coachId == request.auth.uid ||
+                            request.auth.uid in resource.data.parentIds ||
+                            isRole('admin');
+    }
+    
+    // Legacy invites collection (will be migrated to invitations)
+    match /invites/{inviteId} {
+      allow read: if resource.data.coachId == request.auth.uid || isRole('admin');
+      allow write: if resource.data.coachId == request.auth.uid || isRole('admin');
     }
 
-    // COACHES
-    // Defines access rules for coach profile documents.
+    // COACHES COLLECTION (for coach-specific data)
     match /coaches/{coachId} {
-      // A coach can read and update their own profile. Admins can read any coach profile.
-      allow read: if isUser(coachId) || (userExists(request.auth.uid) && isRole('admin'));
-      // A coach can create their own profile document during registration.
-      allow create: if isUser(coachId);
-      // A coach can update their own profile. Admins can update any coach profile.
-      allow update: if isUser(coachId) || (userExists(request.auth.uid) && isRole('admin'));
-      // Only admins can delete coach profiles.
-      allow delete: if userExists(request.auth.uid) && isRole('admin');
+      allow read, write: if isUser(coachId) || isRole('admin');
     }
 
-    // LOGS
-    // Defines access rules for application logs.
-    match /logs/{logId} {
-      // Only the system can create logs (authenticated users with valid sessions)
-      allow create: if isAuthenticated();
-      // Only admins can read logs
-      allow read: if isRole('admin');
-      // No updates or deletes allowed for logs (immutable)
-      allow update, delete: if false;
-    }
-
-    // AUDIT LOGS
-    // Defines access rules for audit trail logs.
-    match /auditLogs/{auditLogId} {
-      // Only the system can create audit logs (authenticated users with valid sessions)
-      allow create: if isAuthenticated();
-      // Only admins can read audit logs
-      allow read: if isRole('admin');
-      // No updates or deletes allowed for audit logs (immutable)
-      allow update, delete: if false;
+    // Default deny rule for any unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============== HELPER FUNCTIONS ============== //
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    /**
+     * Retrieves the role of a specified user from the 'users' collection.
+     * @param userId The UID of the user.
+     * @return The user's role (e.g., 'admin', 'coach', 'parent').
+     */
+    function getRole(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role;
+    }
+    
+    /**
+     * Retrieves the organization ID of a specified user.
+     */
+    function getUserOrganization(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.organizationId;
+    }
+    
+    /**
+     * Checks if the user document exists.
+     * @param userId The UID of the user.
+     * @return True if the user document exists.
+     */
+    function userExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+    
+    /**
+     * Checks if the requesting user has a specific role.
+     * @param role The role to check for (e.g., 'admin').
+     * @return True if the user has the specified role.
+     */
+    function isRole(role) {
+      return isAuthenticated() && getRole(request.auth.uid) == role;
+    }
+
+    /**
+     * Checks if the requesting user is the owner of the document.
+     * @param userId The UID to match against the request's auth UID.
+     * @return True if the UIDs match.
+     */
+    function isUser(userId) {
+        return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    /**
+     * Checks if users belong to the same organization
+     */
+    function sameOrganization(userId) {
+      return isAuthenticated() && 
+             getUserOrganization(request.auth.uid) == getUserOrganization(userId);
+    }
+
+    /**
+     * Checks if user has a specific permission (simplified version)
+     * In production, this should query user_role_assignments
+     */
+    // Removed unused hasPermission function - will be implemented when needed
+
+    /**
+     * Checks if a baby profile is assigned to the current user
+     */
+    function isBabyAssigned(babyId) {
+      let baby = get(/databases/$(database)/documents/baby_profiles/$(babyId)).data;
+      return request.auth.uid == baby.assignedCoachId || 
+             request.auth.uid in baby.parentIds;
+    }
+
+    // ============== COLLECTION RULES ============== //
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      // Users can read their own profile, coaches can read assigned users, admins can read all
+      allow read: if isUser(userId) || 
+                     (isRole('coach') && sameOrganization(userId)) ||
+                     isRole('admin');
+      
+      // Users can update their own basic profile, admins can update any user
+      allow update: if isUser(userId) && 
+                       !('role' in request.resource.data.diff(resource.data).affectedKeys()) &&
+                       !('organizationId' in request.resource.data.diff(resource.data).affectedKeys()) ||
+                       isRole('admin');
+      
+      // Only admins can create users (through invitation system)
+      allow create: if isRole('admin');
+      
+      // Only admins can delete users
+      allow delete: if isRole('admin');
+    }
+
+    // ORGANIZATIONS COLLECTION
+    match /organizations/{orgId} {
+      // Only organization members can read organization data
+      allow read: if isAuthenticated() && getUserOrganization(request.auth.uid) == orgId;
+      
+      // Only admins can modify organization settings
+      allow write: if isRole('admin') && getUserOrganization(request.auth.uid) == orgId;
+    }
+
+    // ROLES COLLECTION
+    match /roles/{roleId} {
+      // Organization members can read roles
+      allow read: if isAuthenticated() && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only admins can create/modify custom roles (system roles are protected)
+      allow write: if isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId &&
+                      !resource.data.isSystemRole;
+    }
+
+    // USER ROLE ASSIGNMENTS COLLECTION
+    match /user_role_assignments/{assignmentId} {
+      // Users can read their own assignments, admins can read all in organization
+      allow read: if resource.data.userId == request.auth.uid ||
+                     (isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId);
+      
+      // Only admins can create/modify role assignments
+      allow write: if isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId;
+    }
+
+    // ENHANCED INVITATIONS COLLECTION
+    match /invitations/{invitationId} {
+      // Users can read invitations they created or are meant for them
+      allow read: if resource.data.createdBy == request.auth.uid ||
+                     resource.data.email == request.auth.token.email ||
+                     (isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId);
+      
+      // Coaches can create parent invitations, admins can create any invitations
+      allow create: if (isRole('coach') && request.resource.data.role == 'parent' &&
+                       getUserOrganization(request.auth.uid) == request.resource.data.organizationId) ||
+                      (isRole('admin') && 
+                       getUserOrganization(request.auth.uid) == request.resource.data.organizationId);
+      
+      // Users can update invitations they created, or system updates
+      allow update: if resource.data.createdBy == request.auth.uid ||
+                       isRole('admin');
+    }
+
+    // INVITATION TEMPLATES COLLECTION
+    match /invitation_templates/{templateId} {
+      // Organization members can read templates
+      allow read: if isAuthenticated() && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only admins can modify templates
+      allow write: if isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId;
+    }
+
+    // ENHANCED BABY PROFILES COLLECTION  
+    match /baby_profiles/{babyId} {
+      // Assigned coaches, parents, and admins can read
+      allow read: if isBabyAssigned(babyId) ||
+                     (isRole('admin') && 
+                      getUserOrganization(request.auth.uid) == resource.data.organizationId);
+      
+      // Assigned coaches can create and update baby profiles
+      allow create: if isRole('coach') && 
+                       request.resource.data.assignedCoachId == request.auth.uid &&
+                       getUserOrganization(request.auth.uid) == request.resource.data.organizationId;
+      
+      allow update: if (resource.data.assignedCoachId == request.auth.uid && isRole('coach')) ||
+                       (request.auth.uid in resource.data.parentIds && isRole('parent')) ||
+                       isRole('admin');
+      
+      // Only admins can delete baby profiles
+      allow delete: if isRole('admin');
+    }
+
+    // SLEEP RECORDS COLLECTION (subcollection of baby_profiles)
+    match /baby_profiles/{babyId}/sleep_records/{recordId} {
+      // Same access rules as parent baby profile
+      allow read, write: if isBabyAssigned(babyId) ||
+                            (isRole('admin') && 
+                             getUserOrganization(request.auth.uid) == 
+                             get(/databases/$(database)/documents/baby_profiles/$(babyId)).data.organizationId);
+    }
+
+    // AUDIT LOGS COLLECTION (restricted access)
+    match /audit_logs/{logId} {
+      // Only admins and system can read audit logs
+      allow read: if isRole('admin') && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only system can write audit logs (via Cloud Functions)
+      allow write: if false; // All writes handled by server-side functions
+    }
+
+    // SECURITY AUDIT LOGS (highly restricted)
+    match /audit_logs_security/{logId} {
+      // Only system admins can read security logs
+      allow read: if isRole('admin') && resource.data.organizationId == 'system';
+      
+      // Only system can write security audit logs
+      allow write: if false;
+    }
+
+    // COMPLIANCE AUDIT LOGS
+    match /audit_logs_compliance/{logId} {
+      // Only admins can read compliance logs for their organization
+      allow read: if isRole('admin') && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only system can write compliance audit logs
+      allow write: if false;
+    }
+
+    // COMPLIANCE REPORTS COLLECTION
+    match /compliance_reports/{reportId} {
+      // Only admins can read reports for their organization
+      allow read: if isRole('admin') && 
+                     getUserOrganization(request.auth.uid) == resource.data.organizationId;
+      
+      // Only system can create reports
+      allow write: if false;
+    }
+
+    // LEGACY COLLECTIONS SUPPORT (for backward compatibility during transition)
+    
+    // Legacy babies collection (will be migrated to baby_profiles)
+    match /babies/{babyId} {
+      allow read, write: if resource.data.coachId == request.auth.uid ||
+                            request.auth.uid in resource.data.parentIds ||
+                            isRole('admin');
+    }
+
+    // Legacy invites collection (will be migrated to invitations)
+    match /invites/{inviteId} {
+      allow read: if resource.data.coachId == request.auth.uid || isRole('admin');
+      allow write: if resource.data.coachId == request.auth.uid || isRole('admin');
+    }
+
+    // COACHES COLLECTION (for coach-specific data)
+    match /coaches/{coachId} {
+      allow read, write: if isUser(coachId) || isRole('admin');
+    }
+
+    // Default deny rule for any unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

@@ -4,6 +4,12 @@ This document outlines the features available in the application, based on the c
 **Last update:** 20/7/2025
 
 ---
+# NEXT STEPS 23-9-2025
+- [ ] disable uncesary modules and functions (dashboard)
+- [ ] fix consul errors 
+- [ ] make new baby work
+- [ ] make new user work
+
 
 ## Unfinished / Future Features
 

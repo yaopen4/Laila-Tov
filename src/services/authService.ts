@@ -1,879 +1,651 @@
-
-// src/services/authService.ts
+// Authentication Service with Advanced RBAC Integration
 import {
   signInWithEmailAndPassword,
-  onAuthStateChanged as firebaseOnAuthStateChanged, // Renamed to avoid conflict
-  type User as FirebaseUser, // Renamed to avoid conflict
+  onAuthStateChanged as firebaseOnAuthStateChanged,
+  type User as FirebaseUser,
   createUserWithEmailAndPassword,
-  signOut as firebaseSignOut, // Renamed to avoid conflict
+  signOut as firebaseSignOut,
   sendPasswordResetEmail,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, Timestamp, type FieldValue } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  query, 
+  where, 
+  collection, 
+  getDocs,
+  Timestamp 
+} from 'firebase/firestore';
 import { auth as firebaseAuthInstance, db } from '@/lib/firebase';
-import type { Invite, User as AppUser, CoachProfile, BabyFormData } from '@/types';
-import { EventCategory, AuditEventType } from '@/types';
-import { redeemInvitePartially, activatePlaceholderUser, getInviteByCodeFromFirestore } from '@/services/inviteService';
-import { logger, logAudit, withPerformanceLogging } from '@/services/loggingService';
+import type { 
+  User, 
+  Invitation,
+  ValidationResult 
+} from '@/types/auth';
+import { RoleService } from './roleService';
+import { AuditLogger } from './auditLogger';
+import { InvitationService } from './invitationService';
 
-
-const COACH_EMAIL_IDENTIFIER = 'coach@lailatov.app'; // Used in older direct login
-const ADMIN_EMAIL_IDENTIFIER = 'admin@lailatov.app'; // Example admin email for direct login differentiation
-
-// This is the user object shape used throughout the app, combining Firebase Auth and Firestore data
+// AuthUser interface that extends Firebase User with our custom data
 export interface AuthUser extends FirebaseUser {
-  name?: string;
-  role?: AppUser['role'];
-  status?: AppUser['status'];
-  parentUsername?: string; // This is the baby's ID for parent routing
-  coachId?: string; // If the user is a parent, this is their coach's UID. If a coach, their own UID.
-  linkedBabyId?: string;
+  role?: User['role'];
+  status?: User['status'];
+  organizationId?: string;
+  permissions?: string[];
+  assignedCoachId?: string;
+  managedBabyProfiles?: string[];
+  preferences?: User['preferences'];
 }
 
-/**
- * Upserts a user document in Firestore. Creates if not exists, updates if exists.
- * This is called on registration and login to ensure Firestore is in sync.
- * @param firebaseUser The user object from Firebase Authentication.
- * @param additionalData Additional data to merge, like role during registration.
- * @returns {Promise<UserDoc>} The user document data from Firestore.
- */
-export const upsertUserDocument = async (
-  firebaseUser: FirebaseUser,
-  additionalData: Partial<AppUser> = {}
-): Promise<AppUser> => {
-  return withPerformanceLogging('upsertUserDocument', async () => {
-    const userRef = doc(db, 'users', firebaseUser.uid);
-    const userSnap = await getDoc(userRef);
+export class AuthService {
+  private static invitationService = new InvitationService();
 
-    if (!userSnap.exists()) {
-      // New user document
-      const newUserDocData: AppUser = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        name: additionalData.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'N/A',
-        role: additionalData.role || 'parent', // Default to parent if not specified
-        status: additionalData.status || 'active',
-        lastLogin: serverTimestamp() as Timestamp,
-        ...additionalData, // Spread any other provided data
-      };
-
-      await setDoc(userRef, newUserDocData);
-
-      // Log user creation audit trail
-      await logAudit(AuditEventType.USER_CREATED, `User document created for ${firebaseUser.email}`, {
-        resourceId: firebaseUser.uid,
-        resourceType: 'user',
-        newValue: {
-          email: newUserDocData.email,
-          role: newUserDocData.role,
-          status: newUserDocData.status
-        },
-        success: true,
-        metadata: {
-          registrationMethod: 'upsert',
-          hasAdditionalData: Object.keys(additionalData).length > 0
-        }
-      });
-
-      await logger.info('User document created successfully', EventCategory.USER_MANAGEMENT, {
-        userId: firebaseUser.uid,
-        email: firebaseUser.email,
-        role: newUserDocData.role
-      });
-
-      return newUserDocData;
-    } else {
-      // Existing user, update (e.g., last login, or if role needs to be synced from a trusted source)
-      const existingData = userSnap.data() as AppUser;
-      const oldValue = { ...existingData };
-      const dataToSet: Partial<AppUser> = {
-        lastLogin: serverTimestamp() as Timestamp,
-        ...additionalData, // Merge additional data, could override existing if keys match
-      };
-
-      // Only update if there's something new, or ensure role is not accidentally changed on login
-      if (Object.keys(additionalData).length > 0 && additionalData.role && additionalData.role !== existingData.role) {
-          // If a role is explicitly passed (e.g. during a specific role-changing flow), update it.
-          // Otherwise, preserve the existing role on simple login.
-          dataToSet.role = additionalData.role;
-
-          // Log role change audit trail
-          await logAudit(AuditEventType.ROLE_CHANGED, `User role changed from ${existingData.role} to ${additionalData.role}`, {
-            resourceId: firebaseUser.uid,
-            resourceType: 'user',
-            oldValue: { role: existingData.role },
-            newValue: { role: additionalData.role },
-            success: true,
-            metadata: { triggeredBy: 'upsertUserDocument' }
-          });
-      } else {
-          // If no role is in additionalData, ensure we don't accidentally wipe it.
-          // And ensure existing role is part of the returned data.
-          dataToSet.role = existingData.role;
-      }
-
-      if (Object.keys(dataToSet).length > 0) {
-          await setDoc(userRef, dataToSet, { merge: true });
-
-          // Log user update audit trail
-          await logAudit(AuditEventType.USER_UPDATED, `User document updated for ${firebaseUser.email}`, {
-            resourceId: firebaseUser.uid,
-            resourceType: 'user',
-            oldValue,
-            newValue: { ...existingData, ...dataToSet },
-            success: true,
-            metadata: {
-              updatedFields: Object.keys(dataToSet),
-              hasRoleChange: dataToSet.role !== existingData.role
-            }
-          });
-      }
-
-      // Return the merged view of the document
-      return { ...existingData, ...dataToSet } as AppUser;
-    }
-  }, {
-    userId: firebaseUser.uid,
-    email: firebaseUser.email,
-    operation: 'user_document_upsert'
-  });
-};
-
-
-/**
- * Registers a new user with email, password, and name using invitation validation.
- * Activates placeholder user records and validates invitation requirements.
- * @param {string} email
- * @param {string} password
- * @param {string} name
- * @param {string} inviteCode - Required invitation code
- * @returns {Promise<AuthUser>}
- */
-export const registerWithEmailAndInvite = async (
-  email: string,
-  password: string,
-  name: string,
-  inviteCode: string
-): Promise<AuthUser> => {
-  return withPerformanceLogging('registerWithEmailAndInvite', async () => {
+  /**
+   * Enhanced user registration with invitation validation
+   */
+  static async registerWithInvitation(
+    invitationCode: string,
+    email: string,
+    password: string,
+    displayName: string
+  ): Promise<{
+    success: boolean;
+    user?: EnhancedAuthUser;
+    error?: string;
+  }> {
     const startTime = Date.now();
 
     try {
-      // First, validate the invitation with the provided email
-      await logger.info('Starting user registration with invite', EventCategory.AUTHENTICATION, {
-        email,
-        inviteCode,
-        name
+      // Log registration attempt
+      await AuditLogger.log({
+        action: 'user_registered',
+        userId: 'anonymous',
+        details: {
+          email,
+          invitationCode,
+          step: 'validation_start'
+        }
       });
 
-      const invite = await getInviteByCodeFromFirestore(inviteCode, email);
+      // Validate invitation
+      const invitation = await this.invitationService.getInvitationByCode(invitationCode);
       
-      if (!invite) {
-        const error = new Error('Invalid invitation code or email does not match invitation.');
-        await logAudit(AuditEventType.SIGNUP_FAILED, 'Registration failed: Invalid invitation', {
-          success: false,
-          metadata: { email, inviteCode, reason: 'invalid_invitation' },
-          error
-        });
-        throw error;
-      }
-      
-      if (invite.status === 'expired') {
-        const error = new Error('This invitation has expired.');
-        await logAudit(AuditEventType.SIGNUP_FAILED, 'Registration failed: Expired invitation', {
-          success: false,
-          metadata: { email, inviteCode, inviteStatus: invite.status },
-          error
-        });
-        throw error;
-      }
-      
-      if (invite.status === 'revoked') {
-        const error = new Error('This invitation has been revoked.');
-        await logAudit(AuditEventType.SIGNUP_FAILED, 'Registration failed: Revoked invitation', {
-          success: false,
-          metadata: { email, inviteCode, inviteStatus: invite.status },
-          error
-        });
-        throw error;
-      }
-      
-      if (invite.status === 'completed') {
-        const error = new Error('This invitation has already been fully redeemed.');
-        await logAudit(AuditEventType.SIGNUP_FAILED, 'Registration failed: Already redeemed invitation', {
-          success: false,
-          metadata: { email, inviteCode, inviteStatus: invite.status },
-          error
-        });
-        throw error;
+      if (!invitation) {
+        return { 
+          success: false, 
+          error: 'Invalid invitation code' 
+        };
       }
 
-      // Determine role from invite (babyData indicates parent invite, otherwise coach)
-      const role = invite.babyData ? 'parent' : 'coach';
-      
-      await logger.info('Invitation validated successfully', EventCategory.AUTHENTICATION, {
-        email,
-        inviteCode,
-        role,
-        inviteStatus: invite.status
-      });
+      if (invitation.email.toLowerCase() !== email.toLowerCase()) {
+        return { 
+          success: false, 
+          error: 'Email does not match invitation' 
+        };
+      }
 
       // Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(firebaseAuthInstance, email, password);
+      const userCredential = await createUserWithEmailAndPassword(
+        firebaseAuthInstance, 
+        email, 
+        password
+      );
       const firebaseUser = userCredential.user;
 
-      await logger.info('Firebase Auth user created', EventCategory.AUTHENTICATION, {
-        userId: firebaseUser.uid,
-        email: firebaseUser.email
-      });
-
       try {
-        let finalUserDoc: AppUser;
-        
-        if (role === 'coach') {
-          // For coaches, create the user document directly (no placeholder system)
-          const userDocData: AppUser = {
-            id: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            name: name,
-            role: 'coach',
-            status: 'active',
-            lastLogin: serverTimestamp() as Timestamp,
-          };
-          
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          await setDoc(userDocRef, userDocData);
-          finalUserDoc = userDocData;
-          
-          await logger.info('Coach user document created directly', EventCategory.USER_MANAGEMENT, {
-            userId: firebaseUser.uid,
-            email: firebaseUser.email,
-            role: 'coach'
-          });
-        } else {
-          // For parents, use the placeholder activation system
-          await activatePlaceholderUser(email, firebaseUser.uid, name);
-          
-          // Get the activated user document
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          
-          if (!userDocSnap.exists()) {
-            throw new Error('Failed to activate user account.');
-          }
-          
-          finalUserDoc = userDocSnap.data() as AppUser;
-        }
-        
-        // If it's a coach, also create their specific profile in the 'coaches' collection
-        if (role === 'coach') {
-          const coachProfileRef = doc(db, 'coaches', finalUserDoc.id);
-          const newCoachProfile: CoachProfile = {
-            id: finalUserDoc.id,
-            clientCount: 0, // Initialize with 0 clients
-          };
-          await setDoc(coachProfileRef, newCoachProfile);
+        // Accept invitation and create enhanced user
+        const acceptResult = await this.invitationService.acceptInvitation(
+          invitationCode, 
+          firebaseUser.uid
+        );
 
-          await logger.info('Coach profile created', EventCategory.USER_MANAGEMENT, {
-            userId: finalUserDoc.id,
-            email: finalUserDoc.email
-          });
+        if (!acceptResult.success) {
+          // Clean up Firebase user if invitation acceptance fails
+          await firebaseUser.delete();
+          return {
+            success: false,
+            error: acceptResult.error || 'Failed to accept invitation'
+          };
         }
-        
-        // Redeem the invite
-        await redeemInvitePartially(invite.id, firebaseUser.uid, email);
 
-        // Log successful registration audit trail
-        await logAudit(AuditEventType.SIGNUP_SUCCESS, `User registration completed successfully for ${email}`, {
-          resourceId: firebaseUser.uid,
-          resourceType: 'user',
-          newValue: {
-            email: finalUserDoc.email,
-            role: finalUserDoc.role,
-            status: finalUserDoc.status
-          },
-          success: true,
-          duration: Date.now() - startTime,
-          metadata: {
-            inviteCode,
-            role,
-            registrationMethod: 'invite',
-            inviteRedeemed: true
-          }
+        // Update user profile with display name
+        await updateDoc(doc(db, 'users', firebaseUser.uid), {
+          displayName: displayName
         });
 
-        await logger.info('User registration completed successfully', EventCategory.AUTHENTICATION, {
+        // Get the complete user data
+        const enhancedUser = await this.getEnhancedUserData(firebaseUser.uid);
+        
+        if (!enhancedUser) {
+          throw new Error('Failed to retrieve user data after registration');
+        }
+
+        // Update Firebase Auth custom claims
+        // Note: This would normally be done by Cloud Functions with Admin SDK
+        // For client-side, we simulate this with local storage or context
+        await this.updateUserPermissionsCache(enhancedUser);
+
+        // Log successful registration
+        await AuditLogger.log({
+          action: 'user_registered',
           userId: firebaseUser.uid,
-          email: firebaseUser.email,
-          role: finalUserDoc.role,
-          duration: Date.now() - startTime
+          targetType: 'user',
+          targetId: firebaseUser.uid,
+          details: {
+            email: enhancedUser.email,
+            role: enhancedUser.role,
+            organizationId: enhancedUser.organizationId,
+            invitationCode,
+            duration: Date.now() - startTime
+          }
         });
 
         return {
-          ...firebaseUser,
-          name: finalUserDoc.name,
-          role: finalUserDoc.role,
-          status: finalUserDoc.status,
-          parentUsername: role === 'parent' && invite && invite.babyData ? invite.babyData.parentUsername : undefined,
-          coachId: role === 'parent' && invite ? invite.coachId : (role === 'coach' ? firebaseUser.uid : undefined),
-          linkedBabyId: role === 'parent' && invite && invite.babyData ? invite.babyData.parentUsername : undefined,
+          success: true,
+          user: this.convertToAuthUser(firebaseUser, enhancedUser)
         };
-      } catch (error) {
-        // If anything fails after creating the Firebase user, clean up
-        const cleanupStartTime = Date.now();
+
+      } catch (setupError) {
+        // Clean up Firebase user if setup fails
         try {
           await firebaseUser.delete();
-          await logger.warn('Firebase user cleaned up after registration failure', EventCategory.AUTHENTICATION, {
-            userId: firebaseUser.uid,
-            email: firebaseUser.email,
-            cleanupDuration: Date.now() - cleanupStartTime
-          });
         } catch (deleteError) {
-          await logger.error('Failed to clean up Firebase user after registration failure', deleteError as Error, EventCategory.AUTHENTICATION, {
-            userId: firebaseUser.uid,
-            email: firebaseUser.email,
-            originalError: error instanceof Error ? error.message : 'Unknown error'
-          });
+          console.error('Failed to clean up Firebase user:', deleteError);
         }
-
-        // Log registration failure audit trail
-        await logAudit(AuditEventType.SIGNUP_FAILED, `User registration failed for ${email}`, {
-          resourceId: firebaseUser.uid,
-          resourceType: 'user',
-          success: false,
-          duration: Date.now() - startTime,
-          metadata: {
-            email,
-            inviteCode,
-            role,
-            stage: 'post_firebase_creation',
-            cleanupAttempted: true
-          },
-          error: error instanceof Error ? error : new Error('Unknown registration error')
-        });
-
-        throw error;
+        throw setupError;
       }
+
     } catch (error) {
-      if (!error.message?.includes('Registration failed:')) {
-        // Log generic registration failure if not already logged
-        await logAudit(AuditEventType.SIGNUP_FAILED, `User registration failed for ${email}`, {
-          success: false,
-          duration: Date.now() - startTime,
-          metadata: {
-            email,
-            inviteCode,
-            stage: 'validation_or_creation'
-          },
-          error: error instanceof Error ? error : new Error('Unknown registration error')
-        });
-      }
+      console.error('Registration failed:', error);
 
-      await logger.error('User registration failed', error instanceof Error ? error : new Error('Unknown registration error'), EventCategory.AUTHENTICATION, {
-        email,
-        inviteCode,
-        duration: Date.now() - startTime
+      // Log failed registration
+      await AuditLogger.log({
+        action: 'user_registered',
+        userId: 'anonymous',
+        details: {
+          email,
+          invitationCode,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          duration: Date.now() - startTime
+        },
+        success: false,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
 
-      throw error;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Registration failed'
+      };
     }
-  }, {
-    email,
-    inviteCode,
-    operation: 'user_registration_with_invite'
-  });
-};
-
-/**
- * Registers a new user with email, password, and name.
- * Intended for coach or parent registration (parent via invite).
- * @deprecated Use registerWithEmailAndInvite instead for proper invitation validation
- * @param {string} email
- * @param {string} password
- * @param {string} name
- * @param {'coach' | 'parent'} role
- * @param {string} [status] - Initial status
- * @param {Invite} [invite] - For parent registration
- * @returns {Promise<AuthUser>}
- */
-export const registerWithEmail = async (
-  email: string,
-  password: string,
-  name: string,
-  role: 'coach' | 'parent',
-  status: AppUser['status'] = 'active',
-  invite?: Invite | null, // invite is null for coach registration
-): Promise<AuthUser> => {
-  const userCredential = await createUserWithEmailAndPassword(firebaseAuthInstance, email, password);
-  const firebaseUser = userCredential.user;
-
-  const userDocData: Partial<AppUser> = {
-    id: firebaseUser.uid,
-    email: firebaseUser.email!,
-    name: name,
-    role: role,
-    status: status,
-  };
-
-  if (role === 'parent' && invite && invite.babyData) {
-    // Note: The 'coachId' and 'inviteCode' fields do not exist on the 'User' type.
-    // This logic might need to be re-evaluated if this data needs to be stored on the user document.
-    // For now, we assume this info is primarily on the baby document.
   }
 
-  const finalUserDoc = await upsertUserDocument(firebaseUser, userDocData);
-  
-  // If it's a coach, also create their specific profile in the 'coaches' collection
-  if (role === 'coach') {
-    const coachProfileRef = doc(db, 'coaches', finalUserDoc.id);
-    const newCoachProfile: CoachProfile = {
-      id: finalUserDoc.id,
-      clientCount: 0, // Initialize with 0 clients
-    };
-    await setDoc(coachProfileRef, newCoachProfile);
-  }
-  
-  // If it's a parent registration with an invite, redeem the invite
-  if (role === 'parent' && invite) {
-    await redeemInvitePartially(invite.id, firebaseUser.uid, email);
-  }
-
-  return {
-    ...firebaseUser,
-    name: finalUserDoc.name,
-    role: finalUserDoc.role,
-    status: finalUserDoc.status,
-    parentUsername: role === 'parent' && invite && invite.babyData ? invite.babyData.parentUsername : undefined,
-    coachId: role === 'parent' && invite ? invite.coachId : (role === 'coach' ? firebaseUser.uid : undefined),
-    linkedBabyId: role === 'parent' && invite && invite.babyData ? invite.babyData.parentUsername : undefined,
-  };
-};
-
-/**
- * Logs in an existing user with email and password.
- * Also ensures their Firestore user document is up-to-date or created.
- * @param {string} email - The user's email address.
- * @param {string} password - The user's password.
- * @returns {Promise<AuthUser>} Enhanced Firebase User object with role and other app-specific data.
- */
-export const loginWithEmail = async (email: string, password: string): Promise<AuthUser> => {
-  return withPerformanceLogging('loginWithEmail', async () => {
+  /**
+   * Enhanced login with audit logging and permission loading
+   */
+  static async loginWithEmail(
+    email: string, 
+    password: string
+  ): Promise<EnhancedAuthUser> {
     const startTime = Date.now();
+    const normalizedEmail = email.toLowerCase();
 
     try {
-      await logger.info('Starting user login attempt', EventCategory.AUTHENTICATION, {
-        email
+      // Log login attempt
+      await AuditLogger.logSession({
+        userId: 'anonymous',
+        action: 'login',
+        success: false, // Will update if successful
+        loginMethod: 'email'
       });
 
-      const userCredential = await signInWithEmailAndPassword(firebaseAuthInstance, email, password);
+      // Firebase authentication
+      const userCredential = await signInWithEmailAndPassword(
+        firebaseAuthInstance, 
+        normalizedEmail, 
+        password
+      );
       const firebaseUser = userCredential.user;
 
-      await logger.info('Firebase authentication successful', EventCategory.AUTHENTICATION, {
-        userId: firebaseUser.uid,
-        email: firebaseUser.email
-      });
-
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-
-      if (!userDocSnap.exists()) {
-        // Try to create the user document if it doesn't exist
-        // This handles cases where the user exists in Auth but not in Firestore
-        await logger.warn('Creating missing user document for authenticated user', EventCategory.AUTHENTICATION, {
-          userId: firebaseUser.uid,
-          email: firebaseUser.email
-        });
-        
-        // Determine role based on email (fallback method)
-        let role: AppUser['role'] = 'parent'; // default
-        if (firebaseUser.email === ADMIN_EMAIL_IDENTIFIER || firebaseUser.email?.includes('admin')) {
-          role = 'admin';
-        } else if (firebaseUser.email === COACH_EMAIL_IDENTIFIER || firebaseUser.email?.includes('coach')) {
-          role = 'coach';
-        }
-        
-        const userDoc = await upsertUserDocument(firebaseUser, { role });
-
-        // Log successful login with document creation
-        await logAudit(AuditEventType.LOGIN_SUCCESS, `User login successful with document creation for ${email}`, {
-          resourceId: firebaseUser.uid,
-          resourceType: 'user',
-          success: true,
-          duration: Date.now() - startTime,
-          metadata: {
-            email,
-            role: userDoc.role,
-            documentCreated: true,
-            loginMethod: 'email_password'
-          }
-        });
-
-        await logger.info('User login completed successfully (with document creation)', EventCategory.AUTHENTICATION, {
-          userId: firebaseUser.uid,
-          email: firebaseUser.email,
-          role: userDoc.role,
-          duration: Date.now() - startTime
-        });
-        
-        return {
-          ...firebaseUser,
-          role: userDoc.role,
-          status: userDoc.status,
-          name: userDoc.name,
-          coachId: userDoc.role === 'coach' ? firebaseUser.uid : undefined,
-        };
+      // Get enhanced user data
+      const enhancedUser = await this.getEnhancedUserData(firebaseUser.uid);
+      
+      if (!enhancedUser) {
+        throw new Error('User profile not found');
       }
-      
-      const userDoc = userDocSnap.data() as AppUser;
 
-      // Update last login timestamp
-      await upsertUserDocument(firebaseUser);
+      // Check user status
+      if (enhancedUser.status !== 'active') {
+        throw new Error(`Account is ${enhancedUser.status}. Please contact support.`);
+      }
 
-      // Log successful login audit trail
-      await logAudit(AuditEventType.LOGIN_SUCCESS, `User login successful for ${email}`, {
-        resourceId: firebaseUser.uid,
-        resourceType: 'user',
+      // Update last login time
+      await updateDoc(doc(db, 'users', firebaseUser.uid), {
+        lastLoginAt: Timestamp.now()
+      });
+
+      // Update permissions cache
+      await this.updateUserPermissionsCache(enhancedUser);
+
+      // Log successful login
+      await AuditLogger.logSession({
+        userId: firebaseUser.uid,
+        action: 'login',
         success: true,
-        duration: Date.now() - startTime,
-        metadata: {
-          email,
-          role: userDoc.role,
-          status: userDoc.status,
-          loginMethod: 'email_password'
+        loginMethod: 'email'
+      });
+
+      await AuditLogger.log({
+        action: 'user_login',
+        userId: firebaseUser.uid,
+        details: {
+          email: enhancedUser.email,
+          role: enhancedUser.role,
+          organizationId: enhancedUser.organizationId,
+          duration: Date.now() - startTime
         }
       });
 
-      await logger.info('User login completed successfully', EventCategory.AUTHENTICATION, {
-        userId: firebaseUser.uid,
-        email: firebaseUser.email,
-        role: userDoc.role,
-        duration: Date.now() - startTime
-      });
-      
-      // To get the linked baby for a parent, we would now need to query the 'babies' collection
-      // where the 'parentIds' array contains the user's UID.
-      // This is a more complex query and might be better handled in the component that needs this data.
-      // For now, we will leave this part simplified. The dashboard already queries for its own data.
-      
-      return {
-        ...firebaseUser, // Spread Firebase Auth user properties (uid, email, etc.)
-        role: userDoc.role,
-        status: userDoc.status,
-        name: userDoc.name || firebaseUser.displayName || undefined,
-        // 'parentUsername' and 'linkedBabyId' are derived properties and should be fetched
-        // by the specific page/component that needs them, by querying the 'babies' collection.
-        coachId: userDoc.role === 'coach' ? firebaseUser.uid : undefined,
-      };
+      return this.convertToAuthUser(firebaseUser, enhancedUser);
+
     } catch (error) {
-      // Log failed login attempt
-      await logAudit(AuditEventType.LOGIN_FAILED, `Login failed for ${email}`, {
+      // Log failed login
+      await AuditLogger.logSession({
+        userId: 'anonymous',
+        action: 'login',
         success: false,
-        duration: Date.now() - startTime,
-        metadata: {
-          email,
-          errorCode: (error as any)?.code,
-          errorMessage: error instanceof Error ? error.message : 'Unknown error'
-        },
-        error: error instanceof Error ? error : new Error('Unknown login error')
+        loginMethod: 'email',
+        failureReason: error instanceof Error ? error.message : 'Unknown error'
       });
 
-      await logger.error('User login failed', error instanceof Error ? error : new Error('Unknown login error'), EventCategory.AUTHENTICATION, {
-        email,
-        duration: Date.now() - startTime,
-        errorCode: (error as any)?.code
+      console.error('Login failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Enhanced logout with audit logging
+   */
+  static async signOut(): Promise<void> {
+    try {
+      const currentUser = firebaseAuthInstance.currentUser;
+      const userId = currentUser?.uid;
+
+      await firebaseSignOut(firebaseAuthInstance);
+
+      // Log successful logout
+      if (userId) {
+        await AuditLogger.logSession({
+          userId,
+          action: 'logout',
+          success: true
+        });
+      }
+
+    } catch (error) {
+      console.error('Logout failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Enhanced password reset with audit logging
+   */
+  static async sendPasswordReset(email: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase();
+
+    try {
+      await sendPasswordResetEmail(firebaseAuthInstance, normalizedEmail);
+
+      // Log password reset request
+      await AuditLogger.log({
+        action: 'password_reset_requested',
+        userId: 'anonymous',
+        details: {
+          email: normalizedEmail
+        }
+      });
+
+    } catch (error) {
+      // Log failed password reset
+      await AuditLogger.log({
+        action: 'password_reset_requested',
+        userId: 'anonymous',
+        details: {
+          email: normalizedEmail,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        },
+        success: false,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
 
       throw error;
     }
-  }, {
-    email,
-    operation: 'user_login'
-  });
-};
-
-
-/**
- * Logs out the current user.
- * @returns {Promise<void>}
- */
-export const signOut = async (): Promise<void> => {
-  try {
-    const currentUser = firebaseAuthInstance.currentUser;
-    const userEmail = currentUser?.email;
-    const userId = currentUser?.uid;
-
-    await firebaseSignOut(firebaseAuthInstance);
-
-    // Log successful logout
-    await logAudit(AuditEventType.LOGOUT, `User logout successful`, {
-      resourceId: userId,
-      resourceType: 'user',
-      success: true,
-      metadata: {
-        email: userEmail,
-        logoutMethod: 'manual'
-      }
-    });
-
-    await logger.info('User logout successful', EventCategory.AUTHENTICATION, {
-      userId,
-      email: userEmail
-    });
-  } catch (error) {
-    await logger.error('User logout failed', error instanceof Error ? error : new Error('Unknown logout error'), EventCategory.AUTHENTICATION);
-    throw error;
   }
-};
 
-/**
- * Sends a password reset email to the specified address.
- * @param {string} email - The user's email.
- * @returns {Promise<void>}
- */
-export const sendPasswordReset = async (email: string): Promise<void> => {
-  const startTime = Date.now();
-  const normalizedEmail = email.toLowerCase();
-
-  try {
-    await logger.info('Password reset requested', EventCategory.AUTHENTICATION, {
-      email: normalizedEmail
-    });
-
-    await sendPasswordResetEmail(firebaseAuthInstance, normalizedEmail);
-
-    // Log successful password reset request
-    await logAudit(AuditEventType.PASSWORD_RESET_REQUEST, `Password reset email sent to ${normalizedEmail}`, {
-      success: true,
-      duration: Date.now() - startTime,
-      metadata: {
-        email: normalizedEmail,
-        resetMethod: 'email'
-      }
-    });
-
-    await logger.info('Password reset email sent successfully', EventCategory.AUTHENTICATION, {
-      email: normalizedEmail,
-      duration: Date.now() - startTime
-    });
-  } catch (error) {
-    // Log failed password reset request
-    await logAudit(AuditEventType.PASSWORD_RESET_REQUEST, `Password reset failed for ${normalizedEmail}`, {
-      success: false,
-      duration: Date.now() - startTime,
-      metadata: {
-        email: normalizedEmail,
-        errorCode: (error as any)?.code,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      },
-      error: error instanceof Error ? error : new Error('Unknown password reset error')
-    });
-
-    await logger.error('Password reset failed', error instanceof Error ? error : new Error('Unknown password reset error'), EventCategory.AUTHENTICATION, {
-      email: normalizedEmail,
-      duration: Date.now() - startTime,
-      errorCode: (error as any)?.code
-    });
-
-    throw error;
-  }
-};
-
-/**
- * Subscribes to authentication state changes.
- * @param {(user: AuthUser | null) => void} callback - Function to call when auth state changes.
- * @returns {import('firebase/auth').Unsubscribe} Unsubscribe function.
- */
-export const onAuthChange = (callback: (user: AuthUser | null) => void) => {
-  return firebaseOnAuthStateChanged(firebaseAuthInstance, async (firebaseUser) => {
-    if (firebaseUser) {
-      try {
-        // On auth change, always try to get the full user profile from Firestore
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-
-        if (userDocSnap.exists()) {
-          const userDocData = userDocSnap.data() as AppUser;
-
-          const authUser: AuthUser = {
-            ...firebaseUser,
-            name: userDocData.name,
-            role: userDocData.role,
-            status: userDocData.status,
-            // Derived properties should be fetched by components that need them.
-            coachId: userDocData.role === 'coach' ? firebaseUser.uid : undefined,
-          };
-          callback(authUser);
-        } else {
-          // User is authenticated with Firebase Auth, but no corresponding Firestore document.
-          // This could happen if Firestore creation failed or was deleted.
-          // Or if Firestore rules prevent reading this user's own document.
-          console.warn(`No Firestore document found for authenticated user ${firebaseUser.uid}. Role will be undefined.`);
-          callback({ ...firebaseUser, role: undefined, status: undefined }); // Pass as AuthUser with undefined role
-        }
-      } catch (error) {
-        console.error("Error fetching user document in onAuthChange:", error);
-        // If Firestore read fails (e.g. permissions), role will be unknown
-        callback({ ...firebaseUser, role: undefined, status: undefined });
-      }
-    } else {
-      callback(null);
-    }
-  });
-};
-
-/**
- * Gets the current authenticated user from Firebase, enhanced with Firestore data.
- * @returns {Promise<AuthUser | null>} A promise that resolves with the AuthUser or null.
- */
-export const getCurrentUser = (): Promise<AuthUser | null> => {
-  return new Promise((resolve, reject) => {
-    const unsubscribe = firebaseOnAuthStateChanged(firebaseAuthInstance, async (firebaseUser) => {
-      unsubscribe();
+  /**
+   * Enhanced auth state change listener
+   */
+  static onAuthStateChanged(
+    callback: (user: EnhancedAuthUser | null) => void
+  ): () => void {
+    return firebaseOnAuthStateChanged(firebaseAuthInstance, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const userDocData = userDocSnap.data() as AppUser;
-            
-            resolve({
-              ...firebaseUser,
-              name: userDocData.name,
-              role: userDocData.role,
-              status: userDocData.status,
-              // Derived properties, should be fetched by components as needed
-              coachId: userDocData.role === 'coach' ? firebaseUser.uid : undefined,
-            });
+          const enhancedUser = await this.getEnhancedUserData(firebaseUser.uid);
+          
+          if (enhancedUser) {
+            callback(this.convertToAuthUser(firebaseUser, enhancedUser));
           } else {
-            console.warn(`No Firestore document for user ${firebaseUser.uid} in getCurrentUser.`);
-            resolve({ ...firebaseUser, role: undefined, status: undefined });
+            console.warn(`No enhanced user data found for ${firebaseUser.uid}`);
+            callback(null);
           }
         } catch (error) {
-            console.error("Error fetching user document in getCurrentUser:", error);
-            // If Firestore read fails, resolve with Firebase user but undefined role
-            resolve({ ...firebaseUser, role: undefined, status: undefined });
+          console.error('Error loading enhanced user data:', error);
+          callback(null);
         }
       } else {
-        resolve(null);
+        callback(null);
       }
-    }, (error) => { // Handle errors from onAuthStateChanged itself
-        unsubscribe();
-        reject(error);
     });
-  });
-};
+  }
 
-/**
- * Checks if the current user is authenticated as an admin based on their role in Firestore.
- * @param {AuthUser | null} user - The application's AuthUser object (includes role).
- * @returns {boolean} True if the user is an admin, false otherwise.
- */
-export const isAdminUser = (user: AuthUser | null): boolean => {
-  return user?.role === 'admin';
-};
+  /**
+   * Get current authenticated user with enhanced data
+   */
+  static async getCurrentUser(): Promise<EnhancedAuthUser | null> {
+    return new Promise((resolve) => {
+      const unsubscribe = firebaseOnAuthStateChanged(firebaseAuthInstance, async (firebaseUser) => {
+        unsubscribe();
+        
+        if (firebaseUser) {
+          try {
+            const enhancedUser = await this.getEnhancedUserData(firebaseUser.uid);
+            
+            if (enhancedUser) {
+              resolve(this.convertToAuthUser(firebaseUser, enhancedUser));
+            } else {
+              resolve(null);
+            }
+          } catch (error) {
+            console.error('Error getting current user:', error);
+            resolve(null);
+          }
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
 
-/**
- * Ensures the current user has admin privileges and a valid Firestore document.
- * @returns {Promise<void>} Throws an error if the user is not an admin.
- */
-export const ensureAdminAccess = async (): Promise<void> => {
-  try {
-    const currentUser = await getCurrentUser();
+  /**
+   * Check if user has specific permission
+   */
+  static async userHasPermission(
+    permission: string,
+    context?: { babyProfileId?: string; organizationId?: string }
+  ): Promise<boolean> {
+    const currentUser = await this.getCurrentUser();
+    
+    if (!currentUser) return false;
+
+    return await RoleService.userHasPermission(
+      currentUser.uid,
+      permission,
+      context
+    );
+  }
+
+  /**
+   * Check role constraints for current user
+   */
+  static async checkRoleConstraints(
+    action: string,
+    context?: any
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    const currentUser = await this.getCurrentUser();
     
     if (!currentUser) {
-      const error = new Error('User not authenticated');
-      await logAudit(AuditEventType.UNAUTHORIZED_ACCESS, 'Admin access denied: User not authenticated', {
-        success: false,
-        metadata: { accessType: 'admin', reason: 'not_authenticated' },
-        error
-      });
-      throw error;
+      return { allowed: false, reason: 'User not authenticated' };
     }
+
+    return await RoleService.checkRoleConstraints(
+      currentUser.uid,
+      action,
+      context
+    );
+  }
+
+  /**
+   * Admin access verification
+   */
+  static async ensureAdminAccess(): Promise<void> {
+    const currentUser = await this.getCurrentUser();
     
-    if (!currentUser.role) {
-      const error = new Error('User role not found. Please contact support.');
-      await logAudit(AuditEventType.UNAUTHORIZED_ACCESS, 'Admin access denied: User role not found', {
-        resourceId: currentUser.uid,
-        resourceType: 'user',
-        success: false,
-        metadata: { 
-          accessType: 'admin', 
-          reason: 'no_role',
-          email: currentUser.email 
+    if (!currentUser) {
+      await AuditLogger.log({
+        action: 'unauthorized_access_attempt',
+        userId: 'anonymous',
+        details: {
+          reason: 'not_authenticated',
+          requiredAccess: 'admin'
         },
-        error
+        success: false
       });
-      throw error;
+      throw new Error('User not authenticated');
     }
     
     if (currentUser.role !== 'admin') {
-      const error = new Error('Admin access required');
-      await logAudit(AuditEventType.PERMISSION_DENIED, `Admin access denied for user with role: ${currentUser.role}`, {
-        resourceId: currentUser.uid,
-        resourceType: 'user',
-        success: false,
-        metadata: { 
-          accessType: 'admin', 
+      await AuditLogger.log({
+        action: 'unauthorized_access_attempt',
+        userId: currentUser.uid,
+        details: {
+          reason: 'insufficient_permissions',
           userRole: currentUser.role,
-          email: currentUser.email,
-          reason: 'insufficient_permissions'
+          requiredAccess: 'admin'
         },
-        error
+        success: false
       });
-      throw error;
+      throw new Error('Admin access required');
+    }
+  }
+
+  /**
+   * Role-based access checks
+   */
+  static isAdmin(user: EnhancedAuthUser | null): boolean {
+    return user?.role === 'admin';
+  }
+
+  static isCoach(user: EnhancedAuthUser | null): boolean {
+    return user?.role === 'coach';
+  }
+
+  static isParent(user: EnhancedAuthUser | null): boolean {
+    return user?.role === 'parent';
+  }
+
+  /**
+   * Organization-based access checks
+   */
+  static async ensureSameOrganization(
+    targetUserId: string,
+    currentUser?: EnhancedAuthUser
+  ): Promise<boolean> {
+    if (!currentUser) {
+      currentUser = await this.getCurrentUser();
+      if (!currentUser) return false;
     }
 
-    // Log successful admin access verification
-    await logger.debug('Admin access verified successfully', {
-      userId: currentUser.uid,
-      email: currentUser.email,
-      role: currentUser.role
-    });
-  } catch (error) {
-    await logger.error('Admin access verification failed', error instanceof Error ? error : new Error('Unknown admin access error'), EventCategory.SECURITY);
-    throw error;
+    const targetUser = await this.getEnhancedUserData(targetUserId);
+    
+    return targetUser?.organizationId === currentUser.organizationId;
   }
-};
 
-/**
- * Checks if the current user is authenticated as a coach based on their role in Firestore.
- * @param {AuthUser | null} user - The application's AuthUser object.
- * @returns {boolean} True if the user is a coach, false otherwise.
- */
-export const isCoachUser = (user: AuthUser | null): boolean => {
-  return user?.role === 'coach';
-};
+  // Private helper methods
 
-/**
- * Checks if the current user is authenticated as the specified parent.
- * This now primarily relies on the role and potentially the parentUsername if needed for finer checks.
- * @param {AuthUser | null} user - The application's AuthUser object.
- * @param {string} [expectedBabyIdForParentPage] - The babyId (which is parentUsername on baby doc) being accessed.
- * @returns {boolean} True if the user is the correct parent, false otherwise.
- */
-export const isParentUser = (user: AuthUser | null, expectedBabyIdForParentPage?: string): boolean => {
-  if (user?.role !== 'parent') return false;
-  if (expectedBabyIdForParentPage) {
-    // User's parentUsername (which is their linked baby's ID) must match the page they are trying to access.
-    return user.parentUsername === expectedBabyIdForParentPage;
+  /**
+   * Get enhanced user data from Firestore
+   */
+  private static async getEnhancedUserData(userId: string): Promise<EnhancedUser | null> {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      
+      if (userDoc.exists()) {
+        return userDoc.data() as EnhancedUser;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting enhanced user data:', error);
+      return null;
+    }
   }
-  return true; // It's a parent, generic check
-};
 
+  /**
+   * Convert Firebase User + Enhanced User data to EnhancedAuthUser
+   */
+  private static convertToAuthUser(
+    firebaseUser: FirebaseUser,
+    enhancedUser: EnhancedUser
+  ): EnhancedAuthUser {
+    return {
+      ...firebaseUser,
+      role: enhancedUser.role,
+      status: enhancedUser.status,
+      organizationId: enhancedUser.organizationId,
+      permissions: enhancedUser.permissions,
+      assignedCoachId: enhancedUser.assignedCoachId,
+      managedBabyProfiles: enhancedUser.managedBabyProfiles,
+      preferences: enhancedUser.preferences
+    };
+  }
 
-/**
- * Fetches all user documents that have the role 'coach'.
- * This is intended for admin use.
- * @returns {Promise<UserDoc[]>} An array of coach user documents.
- */
-import { collection, query, where, getDocs } from 'firebase/firestore';
+  /**
+   * Update user permissions cache (client-side simulation)
+   */
+  private static async updateUserPermissionsCache(user: EnhancedUser): Promise<void> {
+    try {
+      // In a real implementation, this would be handled by Firebase Cloud Functions
+      // with the Admin SDK. For client-side, we can store in localStorage or context
+      
+      const permissionsCache = {
+        userId: user.uid,
+        permissions: user.permissions,
+        role: user.role,
+        organizationId: user.organizationId,
+        lastUpdated: Date.now()
+      };
+      
+      localStorage.setItem('userPermissionsCache', JSON.stringify(permissionsCache));
+      
+    } catch (error) {
+      console.error('Error updating permissions cache:', error);
+    }
+  }
 
-export const getAllCoachUsers = async (): Promise<AppUser[]> => {
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('role', '==', 'coach'));
-  const querySnapshot = await getDocs(q);
-  const coaches: AppUser[] = [];
-  querySnapshot.forEach((doc) => {
-    coaches.push({ id: doc.id, ...doc.data() } as AppUser);
-  });
-  return coaches;
-};
+  /**
+   * Get cached permissions (client-side)
+   */
+  static getCachedPermissions(): string[] {
+    try {
+      const cache = localStorage.getItem('userPermissionsCache');
+      if (cache) {
+        const parsed = JSON.parse(cache);
+        // Check if cache is recent (less than 1 hour old)
+        if (Date.now() - parsed.lastUpdated < 60 * 60 * 1000) {
+          return parsed.permissions || [];
+        }
+      }
+    } catch (error) {
+      console.error('Error getting cached permissions:', error);
+    }
+    return [];
+  }
+
+  /**
+   * Clear permissions cache
+   */
+  static clearPermissionsCache(): void {
+    try {
+      localStorage.removeItem('userPermissionsCache');
+    } catch (error) {
+      console.error('Error clearing permissions cache:', error);
+    }
+  }
+
+  /**
+   * Refresh user permissions from server
+   */
+  static async refreshUserPermissions(userId?: string): Promise<string[]> {
+    try {
+      const currentUser = await this.getCurrentUser();
+      const targetUserId = userId || currentUser?.uid;
+      
+      if (!targetUserId) return [];
+
+      // Get fresh permissions from role service
+      const permissions = await RoleService.getUserPermissions(targetUserId);
+      
+      // Update cache
+      if (targetUserId === currentUser?.uid) {
+        const enhancedUser = await this.getEnhancedUserData(targetUserId);
+        if (enhancedUser) {
+          await this.updateUserPermissionsCache({
+            ...enhancedUser,
+            permissions
+          });
+        }
+      }
+      
+      return permissions;
+      
+    } catch (error) {
+      console.error('Error refreshing user permissions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Validate invitation code format
+   */
+  static validateInvitationCode(code: string): ValidationResult {
+    if (!code || typeof code !== 'string') {
+      return { isValid: false, reason: 'Invalid invitation code format' };
+    }
+    
+    const trimmedCode = code.trim().toUpperCase();
+    
+    if (trimmedCode.length !== 8) {
+      return { isValid: false, reason: 'Invitation code must be 8 characters long' };
+    }
+    
+    if (!/^[A-Z0-9]+$/.test(trimmedCode)) {
+      return { isValid: false, reason: 'Invitation code contains invalid characters' };
+    }
+    
+    return { isValid: true };
+  }
+
+  /**
+   * Get user's redirect path based on role and context
+   */
+  static getRedirectPath(user: EnhancedAuthUser): string {
+    switch (user.role) {
+      case 'admin':
+        return '/admin/dashboard';
+      case 'coach':
+        return '/coach/dashboard';
+      case 'parent':
+        // For parents, redirect to their baby's page if they have one
+        if (user.managedBabyProfiles && user.managedBabyProfiles.length > 0) {
+          return `/parent/${user.managedBabyProfiles[0]}`;
+        }
+        return '/parent/dashboard';
+      default:
+        return '/';
+    }
+  }
+}
+

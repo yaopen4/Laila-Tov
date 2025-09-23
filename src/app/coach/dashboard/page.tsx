@@ -7,11 +7,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import type { Baby, SleepRecord, SleepCycle } from '@/types';
-import { getActiveBabiesFromFirestore, getSleepRecordsForBabyFromFirestore } from '@/services/babyService';
+import type { BabyProfile } from '@/types/auth';
+import { BabyService } from '@/services/babyService';
+import { AuthService, type AuthUser } from '@/services/authService';
 import DashboardHeader from '@/components/coach/dashboard-header';
 import BabyList from '@/components/coach/baby-list';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -49,11 +47,11 @@ const escapeHtml = (unsafe: string | null | undefined): string => {
 };
 
 export default function CoachDashboardPage() {
-  const [babies, setBabies] = useState<Baby[]>([]);
-  const [filteredBabies, setFilteredBabies] = useState<Baby[]>([]);
+  const [babies, setBabies] = useState<BabyProfile[]>([]);
+  const [filteredBabies, setFilteredBabies] = useState<BabyProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const { toast } = useToast();
 
   // State for export dialog
@@ -66,62 +64,43 @@ export default function CoachDashboardPage() {
 
   // Get the currently authenticated user
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
+    const init = async () => {
+      const user = await AuthService.getCurrentUser();
+      if (user?.role === 'coach') {
         setCurrentUser(user);
       } else {
-        // Handle user not logged in, maybe redirect or show a message
-        console.log("User is not logged in.");
         setIsLoading(false);
       }
-    });
-    return () => unsubscribe();
+    };
+    init();
   }, []);
 
 
-  // Real-time listener for active babies, filtered by the current coach's ID
+  // Load babies using baby service
   useEffect(() => {
     if (!currentUser) {
       return; // Wait for the user to be set
     }
     
-    setIsLoading(true);
-
-    const q = query(
-      collection(db, 'babies'),
-      where('coachId', '==', currentUser.uid),
-      where('isArchived', '==', false),
-      orderBy('familyName'),
-      orderBy('name')
-    );
-
-    const unsubscribe = onSnapshot(q, 
-      async (querySnapshot) => {
-        const activeBabiesPromises = querySnapshot.docs.map(async (docSnap) => {
-          const babyData = { id: docSnap.id, ...docSnap.data() } as Baby;
-          // Fetch sleep records for each baby to have complete data for card display / export
-          // This can be optimized if not all sleep data is needed immediately on the dashboard
-          const sleepRecords = await getSleepRecordsForBabyFromFirestore(babyData.id);
-          return { ...babyData, sleepRecords };
-        });
-        const activeBabies = await Promise.all(activeBabiesPromises);
-
+    const loadBabies = async () => {
+      try {
+        setIsLoading(true);
+        const activeBabies = await BabyService.getBabiesForCoach(currentUser.uid);
         setBabies(activeBabies);
         setFilteredBabies(activeBabies); // Initialize filtered list
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching active babies in real-time: ", error);
+      } catch (error) {
+        console.error("Error fetching active babies: ", error);
         toast({
           title: "שגיאה בטעינת נתונים",
           description: "לא ניתן היה לטעון את רשימת התינוקות.",
           variant: "destructive",
         });
+      } finally {
         setIsLoading(false);
       }
-    );
+    };
 
-    return () => unsubscribe(); // Cleanup listener on component unmount
+    loadBabies();
   }, [currentUser, toast]);
 
 
@@ -188,9 +167,9 @@ export default function CoachDashboardPage() {
   /**
    * Handles exporting baby data to CSV files.
    * Generates one CSV file per baby.
-   * @param {Baby[]} babiesToExport - The list of babies to export.
+   * @param {BabyProfile[]} babiesToExport - The list of babies to export.
    */
-  const exportBabiesToCSV = async (babiesToExport: Baby[]) => {
+  const exportBabiesToCSV = async (babiesToExport: BabyProfile[]) => {
     if (babiesToExport.length === 0) {
       toast({ title: 'לא נבחרו תינוקות', description: 'יש לבחור לפחות תינוק אחד לייצוא.', variant: 'destructive' });
       return;
@@ -223,8 +202,8 @@ export default function CoachDashboardPage() {
 
     for (const baby of babiesToExport) {
       const babyDataForCSV: any[] = [];
-      // Ensure sleepRecords are fetched if not already on the baby object from the dashboard state
-      const sleepRecords = baby.sleepRecords || await getSleepRecordsForBabyFromFirestore(baby.id);
+      // Fetch sleep records for the baby
+      const sleepRecords = await BabyService.getSleepRecordsForBaby(baby.id);
 
       if (sleepRecords && sleepRecords.length > 0) {
         sleepRecords.forEach(record => {
@@ -271,9 +250,9 @@ export default function CoachDashboardPage() {
 
   /**
    * Handles exporting baby data to a PDF file (via browser print).
-   * @param {Baby[]} babiesToExport - The list of babies to export.
+   * @param {BabyProfile[]} babiesToExport - The list of babies to export.
    */
-  const exportBabiesToPDF = async (babiesToExport: Baby[]) => {
+  const exportBabiesToPDF = async (babiesToExport: BabyProfile[]) => {
      if (babiesToExport.length === 0) {
       toast({ title: 'לא נבחרו תינוקות', description: 'יש לבחור לפחות תינוק אחד לייצוא.', variant: 'destructive' });
       return;
@@ -317,7 +296,7 @@ export default function CoachDashboardPage() {
           ${baby.coachNotes ? `<p><strong>הערות היועצת:</strong> ${escapeHtml(baby.coachNotes)}</p>` : ''}
       `;
       
-      const sleepRecords = baby.sleepRecords || await getSleepRecordsForBabyFromFirestore(baby.id);
+      const sleepRecords = await BabyService.getSleepRecordsForBaby(baby.id);
 
       if (sleepRecords && sleepRecords.length > 0) {
         sleepRecords.forEach(record => {
