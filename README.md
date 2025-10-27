@@ -1,128 +1,69 @@
+# Laila Tov – Baby Sleep Tracking App
 
-# Laila Tov - Baby Sleep Tracking App
+**Laila Tov** (לילה טוב – “Good Night”) is a web application that helps sleep consultants and parents track and manage baby sleep patterns.  
+It provides an organized, collaborative environment where consultants can monitor multiple families while parents record daily sleep data.
 
-"Laila Tov" (לילה טוב - Good Night) is a Next.js application designed to help sleep consultants and parents track and manage baby sleep patterns. It provides a dashboard for consultants to manage multiple babies and a separate interface for parents to log sleep data.
+---
 
-**IMPORTANT: This application is configured to work with Firebase (Authentication and Firestore) for data persistence and real-time updates. You MUST set up your own Firebase project and configure the application accordingly.**
+## Overview
+
+The platform enables consultants to follow each baby's sleep history and provide personalized feedback, while parents easily log sleep cycles and view their coach’s notes — all in one secure, real-time system.
+
+The application is built on **Next.js**, **React**, and **Firebase** (Authentication + Firestore) for data storage and real-time synchronization.
+
+---
 
 ## Key Features
 
-*   **Consultant Dashboard**:
-    *   View and manage all active babies.
-    *   Search and filter functionalities.
-    *   Export data for selected babies (CSV per baby, or a consolidated PDF via browser print).
-*   **Parent View**:
-    *   Dedicated interface for parents to log daily sleep records for their baby.
-    *   View consultant recommendations.
-    *   View history of sleep records, including the option to edit or delete the latest record.
-*   **Baby Management (Consultant)**:
-    *   Add new baby profiles with details like name, age, parent information, consultant notes, etc.
-    *   Edit existing baby profiles.
-    *   Archive baby profiles (removes them from the active dashboard).
-    *   View archived babies, unarchive them, or permanently delete them.
-*   **Sleep Logging (Parent)**:
-    *   Parents can log detailed sleep cycles including bedtime, time to fall asleep, who put the baby to sleep, how they fell asleep, and wake time.
-    *   Edit and delete existing sleep records.
-*   **Consultant Notes**: Consultants can add recommendations and notes for parents, which are displayed in the parent view.
-*   **User Authentication (Firebase)**: Uses Firebase Authentication. 
-    *   Parents are identified by an email derived from their username (e.g., `parentUsername@lailatov.app`).
-    *   The consultant uses a predefined email (e.g., `coach@lailatov.app`).
-*   **Data Storage (Firestore)**: All data (babies, sleep records) is stored in Firestore, enabling persistence and real-time updates.
-*   **Real-time Updates**: Changes made by parents or consultants are reflected in real-time across devices.
-*   **Responsive Design**: UI adapts for different screen sizes, including a mobile-friendly sidebar.
+### For Coaches
+- Dashboard showing all assigned babies and their latest sleep updates.  
+- Add, edit, archive, or restore baby profiles.  
+- Write consultant notes visible to parents.  
+- Generate unique invite codes for new parent accounts.  
+- Export baby sleep data to CSV or PDF.  
 
-## Tech Stack
+### For Parents
+- Log daily sleep cycles (bedtime, wake time, and other details).  
+- Edit or delete recent sleep records.  
+- View full sleep history for their baby.  
+- See consultant notes and recommendations (read-only).  
 
-*   **Next.js**: React framework for server-side rendering and static site generation.
-*   **React**: JavaScript library for building user interfaces.
-*   **TypeScript**: Superset of JavaScript adding static typing.
-*   **Firebase**: Backend-as-a-Service for Authentication and Firestore database.
-*   **ShadCN UI**: Re-usable UI components.
-*   **Tailwind CSS**: Utility-first CSS framework for styling.
-*   **Lucide Icons**: Icon library.
-*   **date-fns**: Library for date manipulation and formatting.
-*   **Genkit (AI)**: (Boilerplate included, specific AI features can be built upon this).
+### System
+- Real-time updates between parents and coaches.  
+- Secure Firebase Authentication and Firestore data storage.  
+- Responsive design with full Hebrew right-to-left support.  
 
-## Getting Started
+---
 
-1.  **Clone the repository (if applicable) or ensure all project files are present.**
-2.  **Set up Firebase Project**:
-    *   Go to the [Firebase Console](https://console.firebase.google.com/) and create a new project (or use an existing one).
-    *   **Enable Authentication**: In your Firebase project, go to Authentication -> Sign-in method, and enable "Email/Password".
-    *   **Enable Firestore**: In your Firebase project, go to Firestore Database and create a database. Start in **test mode** for initial development (this allows open read/write access - **IMPORTANT: Secure your database with Firestore Security Rules before going to production**).
-    *   **Register your Web App**: In your Firebase project settings, add a new Web App. Firebase will provide you with a configuration object.
-3.  **Configure Firebase in the App**:
-    *   Create a file named `.env.local` in the root of your project.
-    *   Add your Firebase configuration keys to this file, prefixed with `NEXT_PUBLIC_`:
-        ```env
-        NEXT_PUBLIC_FIREBASE_API_KEY="YOUR_API_KEY"
-        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="YOUR_AUTH_DOMAIN"
-        NEXT_PUBLIC_FIREBASE_PROJECT_ID="YOUR_PROJECT_ID"
-        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="YOUR_STORAGE_BUCKET"
-        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="YOUR_MESSAGING_SENDER_ID"
-        NEXT_PUBLIC_FIREBASE_APP_ID="YOUR_APP_ID"
-        ```
-    *   Replace `"YOUR_..."` with your actual Firebase project configuration values.
-4.  **Install dependencies:**
-    ```bash
-    npm install
-    # or
-    # yarn install
-    # or
-    # pnpm install
-    ```
-5.  **Run the development server:**
-    ```bash
-    npm run dev
-    # or
-    # yarn dev
-    # or
-    # pnpm dev
-    ```
-    The application will typically be available at `http://localhost:9002`.
+## User Roles & Permissions
 
-## Login Credentials & User Creation
+| Role | Access | Description |
+|------|---------|-------------|
+| **Parent** | Read/write only their own baby's records | Can log, edit, and delete personal sleep data. Can view coach notes but cannot modify them or see other families. |
+| **Coach** | Read/write for babies they created | Can manage assigned babies, add notes, and invite parents. Cannot access other coaches’ data. |
+| **Admin** | Full system access | Can manage all users and data, approve new coaches, and impersonate any account for support. |
 
-*   **Consultant**:
-    *   The primary consultant account should be created directly in the Firebase Authentication console. The email **must be** `coach@lailatov.app` (or the email defined as `COACH_EMAIL_IDENTIFIER` in `src/services/authService.ts` if changed).
-    *   Set a secure password for this account in the Firebase console.
-    *   The consultant logs in using this email and password.
-*   **Parent**:
-    *   **Parent accounts are created manually by the consultant in the Firebase Authentication console.** Parents cannot sign themselves up through the app.
-    *   When a consultant adds a new baby via the app and assigns a "Parent Username" (e.g., `cohen-family`):
-        1.  The consultant must then go to the Firebase Console -> Authentication -> Users -> "Add user".
-        2.  The consultant creates a user with an email formatted as `[Parent Username]@lailatov.app` (e.g., `cohen-family@lailatov.app`).
-        3.  The consultant sets a temporary password for this parent account.
-        4.  The consultant securely communicates the assigned "Parent Username" and the temporary password to the parent.
-    *   The parent then logs into the app using their assigned "Parent Username" in the "שם משתמש / אימייל" field and the temporary password.
-    *   *Note: For a production system, a "force password change on first login" mechanism is recommended but not implemented in this version.*
+All data is synchronized securely through Firebase. Each user’s permissions are enforced both in the interface and at the database level.
 
-## Security Considerations
+---
 
-*   **Firebase Security Rules**: **CRITICAL!** The default Firestore setup in test mode allows open access. **You MUST write and deploy appropriate Firestore Security Rules** to protect your data before deploying to production. Rules should ensure:
-    *   Users can only read/write data they are authorized for (e.g., a parent can only access their own baby's data, the consultant can only access their assigned babies).
-    *   Consultants have appropriate access to manage babies.
-    *   Proper input validation and data sanitization at the database level.
-*   **Authentication & Authorization**: Firebase Authentication handles user identity. Authorization logic (who can access what) is enforced through Firestore Security Rules and client-side checks in the Next.js application. The client-side checks are primarily for UI/UX and should not be the sole line of defense; robust Firestore rules are essential.
-*   **Input Validation**: Zod is used for client-side form validation. Server-side validation (e.g., in Firestore Security Rules or Firebase Cloud Functions if you extend the backend) is crucial for production.
-*   **Sensitive Data**: Review how and where sensitive data is stored and ensure it complies with privacy regulations. The current setup stores data in Firestore as configured by you.
+## Technology
 
-## Mobile Compatibility
+- **Next.js + React** – Front-end framework and UI logic  
+- **TypeScript** – Type-safe development  
+- **Firebase (Auth + Firestore)** – Authentication, database, and hosting  
+- **Tailwind CSS + ShadCN UI** – Responsive design system  
+- **Lucide Icons**, **date-fns** – Utilities and visuals  
 
-The application is designed to be responsive and mobile-friendly. Key aspects include:
-*   A collapsible sidebar that transitions to an off-canvas menu on mobile devices.
-*   Responsive grid layouts for forms and lists.
-*   Use of Tailwind CSS, which facilitates responsive design.
+---
 
-However, for a production-ready mobile experience, **comprehensive testing on a variety of mobile devices, screen sizes, and operating systems is crucial.** This ensures an optimal user experience, identifies any touch-specific issues, and verifies performance on mobile networks.
+## Security
 
-## Future Enhancements & Considerations
+The app uses Firebase Authentication for identity and Firestore rules to enforce data isolation:  
+- Parents can only access their own baby’s records.  
+- Coaches can access only their assigned babies.  
+- Admins have full control for maintenance and oversight.
 
-*   **Advanced Firestore Security Rules**: Implement comprehensive and granular security rules for production.
-*   **Server-Side Logic (Cloud Functions)**: For more complex operations, data validation, or tasks that shouldn't be client-driven (e.g., sending welcome emails, automated password reset flows, or programmatically creating parent users if desired in the future).
-*   **Comprehensive Automated Testing**: Implementing unit, integration, and end-to-end tests.
-*   **Advanced Performance Optimization**: Deeper analysis and optimization as the application scales.
-*   **Centralized Logging**: Implementing a more formal logging solution for production environments.
-*   **Accessibility (A11y) Audit**: Ensuring all components and interactions are fully accessible.
+Before deployment, appropriate Firestore security rules must be applied to protect user data.
 
-This project was bootstrapped for Firebase Studio.
+---
