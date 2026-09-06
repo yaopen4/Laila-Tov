@@ -16,7 +16,6 @@ import { db } from '@/lib/firebase';
 import type { Organization } from '@/types/auth';
 import { AuthService } from './authService';
 import { RoleService } from './roleService';
-import { AuditLogger } from './auditLogger';
 
 export class OrganizationService {
   
@@ -58,17 +57,6 @@ export class OrganizationService {
     await RoleService.initializeSystemRoles(orgRef.id, params.ownerId);
     
     // Log organization creation
-    await AuditLogger.log({
-      action: 'organization_settings_updated',
-      userId: params.ownerId,
-      targetType: 'organization',
-      targetId: orgRef.id,
-      details: {
-        name: organization.name,
-        type: organization.type,
-        action: 'created'
-      }
-    });
     
     return orgRef.id;
   }
@@ -106,7 +94,6 @@ export class OrganizationService {
       
       const snapshot = await getDocs(orgsQuery);
       return snapshot.docs.map(doc => doc.data() as Organization);
-      
     } catch (error) {
       console.error('Error getting organizations:', error);
       return [];
@@ -146,14 +133,6 @@ export class OrganizationService {
     });
     
     // Log organization update
-    await AuditLogger.logDataModification({
-      userId: userId,
-      action: 'organization_settings_updated',
-      targetType: 'organization',
-      targetId: organizationId,
-      previousValues,
-      newValues: { ...org, ...updates }
-    });
   }
   
   /**
@@ -202,7 +181,6 @@ export class OrganizationService {
         activeBabyProfiles: babyProfiles.filter(b => b.status === 'active').length,
         pendingInvitations: invitationsSnapshot.size
       };
-      
     } catch (error) {
       console.error('Error getting organization stats:', error);
       return {
@@ -233,7 +211,6 @@ export class OrganizationService {
         id: doc.id,
         ...doc.data()
       }));
-      
     } catch (error) {
       console.error('Error getting organization users:', error);
       return [];
@@ -256,7 +233,6 @@ export class OrganizationService {
         id: doc.id,
         ...doc.data()
       }));
-      
     } catch (error) {
       console.error('Error getting organization invitations:', error);
       return [];
@@ -285,15 +261,5 @@ export class OrganizationService {
     });
     
     // Log deactivation
-    await AuditLogger.log({
-      action: 'organization_settings_updated',
-      userId: userId,
-      targetType: 'organization',
-      targetId: organizationId,
-      details: {
-        action: 'deactivated',
-        reason: 'manual_deactivation'
-      }
-    });
   }
 }

@@ -17,15 +17,12 @@ import {
 import { db } from '@/lib/firebase';
 import type { 
   BabyProfile,
-   
 } from '@/types/auth';
 import type { BabyFormData } from '@/types';
 import type { SleepRecord } from '@/types';
 import { AuthService } from './authService';
 import { RoleService } from './roleService';
-import { AuditLogger } from './auditLogger';
 import { apiFetch } from '@/lib/apiClient';
-
 
 /**
  * Sleep record dates are stored as 'YYYY-MM-DD' strings.
@@ -135,16 +132,6 @@ export class BabyService {
     const snapshot = await getDocs(queryRef);
     const babyProfiles = snapshot.docs.map(doc => doc.data() as BabyProfile);
 
-    // Log data access
-    await AuditLogger.logDataAccess({
-      userId: currentUser.uid,
-      targetType: 'baby_profile',
-      targetId: 'multiple',
-      action: 'read',
-      dataScope: currentUser.role,
-      recordCount: babyProfiles.length
-    });
-
     return babyProfiles;
   }
 
@@ -175,27 +162,9 @@ export class BabyService {
     const hasAccess = await this.checkBabyAccess(userId, babyProfile);
     
     if (!hasAccess) {
-      await AuditLogger.log({
-        action: 'unauthorized_access_attempt',
-        userId: userId,
-        targetType: 'baby_profile',
-        targetId: babyId,
-        details: {
-          reason: 'insufficient_permissions'
-        },
-        success: false
-      });
       
       throw new Error('Access denied to this baby profile');
     }
-
-    // Log data access
-    await AuditLogger.logDataAccess({
-      userId: userId,
-      targetType: 'baby_profile',
-      targetId: babyId,
-      action: 'read'
-    });
 
     return babyProfile;
   }
@@ -241,16 +210,6 @@ export class BabyService {
     };
 
     await updateDoc(doc(db, 'baby_profiles', babyId), updateData);
-
-    // Log data modification
-    await AuditLogger.logDataModification({
-      userId: userId,
-      action: 'baby_profile_updated',
-      targetType: 'baby_profile',
-      targetId: babyId,
-      previousValues,
-      newValues: { ...babyProfile, ...updateData }
-    });
   }
 
   /**
@@ -285,15 +244,6 @@ export class BabyService {
     await updateDoc(doc(db, 'baby_profiles', babyId), updateData);
 
     // Log archive action
-    await AuditLogger.log({
-      action: 'baby_profile_archived',
-      userId: userId,
-      targetType: 'baby_profile',
-      targetId: babyId,
-      details: {
-        reason: 'manual_archive'
-      }
-    });
   }
 
   /**
@@ -328,15 +278,6 @@ export class BabyService {
     await updateDoc(doc(db, 'baby_profiles', babyId), updateData);
 
     // Log restore action
-    await AuditLogger.log({
-      action: 'baby_profile_restored',
-      userId: userId,
-      targetType: 'baby_profile',
-      targetId: babyId,
-      details: {
-        reason: 'manual_restore'
-      }
-    });
   }
 
   /**
@@ -368,16 +309,6 @@ export class BabyService {
     });
 
     // Log action
-    await AuditLogger.log({
-      action: 'parent_added_to_baby',
-      userId: userId,
-      targetType: 'baby_profile',
-      targetId: babyId,
-      targetUserId: parentId,
-      details: {
-        addedBy: userId
-      }
-    });
   }
 
   /**
@@ -409,16 +340,6 @@ export class BabyService {
     });
 
     // Log action
-    await AuditLogger.log({
-      action: 'parent_removed_from_baby',
-      userId: userId,
-      targetType: 'baby_profile',
-      targetId: babyId,
-      targetUserId: parentId,
-      details: {
-        removedBy: userId
-      }
-    });
   }
 
   /**
@@ -454,17 +375,6 @@ export class BabyService {
     await this.addBabyToCoachProfile(newCoachId, babyId);
 
     // Log transfer
-    await AuditLogger.log({
-      action: 'baby_profile_transferred',
-      userId: userId,
-      targetType: 'baby_profile',
-      targetId: babyId,
-      details: {
-        previousCoachId,
-        newCoachId,
-        transferredBy: userId
-      }
-    });
   }
 
   /**
@@ -491,15 +401,6 @@ export class BabyService {
       id: doc.id,
       ...doc.data()
     })) as SleepRecord[];
-
-    // Log data access
-    await AuditLogger.logDataAccess({
-      userId: userId,
-      targetType: 'sleep_log',
-      targetId: babyId,
-      action: 'read',
-      recordCount: sleepRecords.length
-    });
 
     return sleepRecords;
   }
@@ -557,14 +458,6 @@ export class BabyService {
     const records = await getDocs(collection(db, 'baby_profiles', babyId, 'sleep_records'));
     await Promise.all(records.docs.map((record) => deleteDoc(record.ref)));
     await deleteDoc(doc(db, 'baby_profiles', babyId));
-
-    await AuditLogger.log({
-      action: 'baby_profile_deleted',
-      userId: actingUserId,
-      targetType: 'baby_profile',
-      targetId: babyId,
-      details: { deletedSleepRecords: records.size },
-    });
   }
 
   /**
@@ -624,15 +517,6 @@ export class BabyService {
       lastUpdatedAt: Timestamp.now(),
       lastModified: new Date().toISOString()
     });
-
-    await AuditLogger.logDataModification({
-      userId: currentUser.uid,
-      action: 'sleep_log_updated',
-      targetType: 'sleep_log',
-      targetId: recordId,
-      previousValues: previousValues ?? {},
-      newValues: { ...(previousValues ?? {}), ...(updates as any) }
-    });
   }
 
   /**
@@ -656,14 +540,6 @@ export class BabyService {
     }
 
     await deleteDoc(doc(db, 'baby_profiles', babyId, 'sleep_records', recordId));
-
-    await AuditLogger.log({
-      action: 'sleep_log_deleted',
-      userId: currentUser.uid,
-      targetType: 'sleep_log',
-      targetId: recordId,
-      details: { babyId }
-    });
   }
 
   /**
@@ -700,19 +576,6 @@ export class BabyService {
     await updateDoc(doc(db, 'baby_profiles', babyId), {
       lastUpdatedAt: Timestamp.now(),
       lastModified: new Date().toISOString()
-    });
-
-    // Log data creation
-    await AuditLogger.log({
-      action: 'sleep_log_created',
-      userId: userId,
-      targetType: 'sleep_log',
-      targetId: sleepRecordRef.id,
-      details: {
-          babyId,
-        date: sleepRecord.date,
-        cycleCount: sleepRecord.sleepCycles.length
-      }
     });
 
     return sleepRecordRef.id;

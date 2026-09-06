@@ -20,7 +20,6 @@ import type {
   User,
   AuditAction 
 } from '@/types/auth';
-import { AuditLogger } from './auditLogger';
 
 export class RoleService {
   
@@ -313,16 +312,6 @@ export class RoleService {
     await this.updateUserPermissionsCache(params.userId);
     
     // Log the role assignment
-    await AuditLogger.log({
-      action: 'role_assigned' as AuditAction,
-      userId: params.assignedBy,
-      targetUserId: params.userId,
-      details: {
-        roleId: params.roleId,
-        organizationId: params.organizationId,
-        context: params.context
-      }
-    });
   }
 
   /**
@@ -366,17 +355,7 @@ export class RoleService {
     };
     
     await setDoc(roleRef, role);
-    
-    await AuditLogger.log({
-      action: 'role_created' as AuditAction,
-      userId: params.createdBy,
-      details: {
-        roleId: roleRef.id,
-        roleName: params.name,
-        permissions: params.permissions
-      }
-    });
-    
+
     return roleRef.id;
   }
 

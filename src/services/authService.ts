@@ -25,7 +25,6 @@ import type {
   ValidationResult 
 } from '@/types/auth';
 import { RoleService } from './roleService';
-import { AuditLogger } from './auditLogger';
 import { InvitationService } from './invitationService';
 import { apiFetchPublic } from '@/lib/apiClient';
 import { getRedirectPathForRole } from '@/lib/permissions';
@@ -112,12 +111,6 @@ export class AuthService {
 
     try {
       // Log login attempt
-      await AuditLogger.logSession({
-        userId: 'anonymous',
-        action: 'login',
-        success: false, // Will update if successful
-        loginMethod: 'email'
-      });
 
       // Firebase authentication
       const userCredential = await signInWithEmailAndPassword(
@@ -144,39 +137,8 @@ export class AuthService {
         lastLoginAt: Timestamp.now()
       });
 
-      // Update permissions cache
-
-      // Log successful login
-      await AuditLogger.logSession({
-        userId: firebaseUser.uid,
-        action: 'login',
-        success: true,
-        loginMethod: 'email'
-      });
-
-      await AuditLogger.log({
-        action: 'user_login',
-        userId: firebaseUser.uid,
-        details: {
-          email: enhancedUser.email,
-          role: enhancedUser.role,
-          organizationId: enhancedUser.organizationId,
-          duration: Date.now() - startTime
-        }
-      });
-
       return this.convertToAuthUser(firebaseUser, enhancedUser);
-
     } catch (error) {
-      // Log failed login
-      await AuditLogger.logSession({
-        userId: 'anonymous',
-        action: 'login',
-        success: false,
-        loginMethod: 'email',
-        failureReason: error instanceof Error ? error.message : 'Unknown error'
-      });
-
       console.error('Login failed:', error);
       throw error;
     }
@@ -194,13 +156,7 @@ export class AuthService {
 
       // Log successful logout
       if (userId) {
-        await AuditLogger.logSession({
-          userId,
-          action: 'logout',
-          success: true
-        });
       }
-
     } catch (error) {
       console.error('Logout failed:', error);
       throw error;
@@ -217,26 +173,8 @@ export class AuthService {
       await sendPasswordResetEmail(firebaseAuthInstance, normalizedEmail);
 
       // Log password reset request
-      await AuditLogger.log({
-        action: 'password_reset_requested',
-        userId: 'anonymous',
-        details: {
-          email: normalizedEmail
-        }
-      });
-
     } catch (error) {
       // Log failed password reset
-      await AuditLogger.log({
-        action: 'password_reset_requested',
-        userId: 'anonymous',
-        details: {
-          email: normalizedEmail,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        },
-        success: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      });
 
       throw error;
     }
@@ -342,29 +280,10 @@ export class AuthService {
     const currentUser = await this.getCurrentUser();
     
     if (!currentUser) {
-      await AuditLogger.log({
-        action: 'unauthorized_access_attempt',
-        userId: 'anonymous',
-        details: {
-          reason: 'not_authenticated',
-          requiredAccess: 'admin'
-        },
-        success: false
-      });
       throw new Error('User not authenticated');
     }
     
     if (currentUser.role !== 'admin') {
-      await AuditLogger.log({
-        action: 'unauthorized_access_attempt',
-        userId: currentUser.uid,
-        details: {
-          reason: 'insufficient_permissions',
-          userRole: currentUser.role,
-          requiredAccess: 'admin'
-        },
-        success: false
-      });
       throw new Error('Admin access required');
     }
   }

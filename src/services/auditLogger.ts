@@ -268,11 +268,11 @@ export class AuditLogger {
       data: reportData
     };
     
-    await setDoc(
-      doc(db, 'compliance_reports', reportId),
-      reportDoc
-    );
-    
+    // The report is generated for immediate download and not persisted:
+    // firestore.rules denies clients any write to compliance_reports, so this
+    // setDoc always failed. Persisting it would need a server route; nothing
+    // currently reads stored reports back.
+
     // Generate downloadable file (PDF/Excel)
     const downloadUrl = await this.generateReportFile(reportDoc);
     
