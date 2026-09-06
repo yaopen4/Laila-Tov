@@ -15,19 +15,9 @@ import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
 import { AuthService, type AuthUser } from '@/services/authService';
 import { Separator } from '../ui/separator';
+import { getRedirectPathForRole } from '@/lib/permissions';
 
 
-const getRedirectPath = (user: AuthUser): string => {
-  if (user.role === 'admin') {
-    return '/admin/dashboard';
-  } else if (user.role === 'coach') {
-    return '/coach/dashboard';
-  } else if (user.role === 'parent' && user.managedBabyProfiles && user.managedBabyProfiles.length > 0) {
-    return `/parent/${user.managedBabyProfiles[0]}`;
-  }
-  console.warn("Could not determine redirect path for user:", user);
-  return '/';
-};
 
 
 const LoginForm: FC = () => {
@@ -72,7 +62,7 @@ const LoginForm: FC = () => {
       }
 
       toast({ title: "התחברות הצליחה", description: `ברוך הבא, ${loggedInUser.displayName || loggedInUser.email}!` });
-      router.push(getRedirectPath(loggedInUser));
+      router.push(getRedirectPathForRole(loggedInUser.role, loggedInUser.managedBabyProfiles ?? []));
 
     } catch (error: any) {
       console.error("Authentication error:", error);

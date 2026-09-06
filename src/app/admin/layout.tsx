@@ -64,11 +64,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: "/admin/users", label: "ניהול משתמשים", icon: Users },
     { href: "/admin/roles", label: "ניהול תפקידים", icon: Shield },
     { href: "/admin/manual-invitations", label: "הזמנות ידניות", icon: ClipboardCheck },
-    { href: "/admin/email-invitations", label: "הזמנות אימייל", icon: MailPlus },
     { href: "/admin/email-templates", label: "תבניות אימייל", icon: FileCode },
     { href: "/admin/audit", label: "יומן ביקורת", icon: FileText },
     { href: "/admin/settings", label: "הגדרות מערכת", icon: Settings },
-    { href: "/admin/test-manual-invitations", label: "בדיקת הזמנות ידניות", icon: TestTube },
   ];
 
   const handleLogout = async () => {

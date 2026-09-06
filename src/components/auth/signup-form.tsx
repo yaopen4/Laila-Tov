@@ -16,18 +16,8 @@ import { UserPlus } from 'lucide-react';
 import { Separator } from "@/components/ui/separator";
 import { AuthService, type AuthUser } from '@/services/authService';
 import { InvitationService } from '@/services/invitationService';
+import { getRedirectPathForRole } from '@/lib/permissions';
 
-const getRedirectPath = (user: AuthUser): string => {
-  if (user.role === 'admin') {
-    return '/admin/dashboard';
-  } else if (user.role === 'coach') {
-    return '/coach/dashboard';
-  } else if (user.role === 'parent' && user.managedBabyProfiles && user.managedBabyProfiles.length > 0) {
-    return `/parent/${user.managedBabyProfiles[0]}`;
-  }
-  console.warn("Could not determine redirect path for user:", user);
-  return '/';
-};
 
 const SignUpForm: FC = () => {
   const [email, setEmail] = useState('');
@@ -89,7 +79,7 @@ const SignUpForm: FC = () => {
       
       toast({ title: "רישום הושלם!", description: welcomeMessage });
       
-      router.push(getRedirectPath(authUser));
+      router.push(getRedirectPathForRole(authUser.role, authUser.managedBabyProfiles ?? []));
 
     } catch (error: any) {
       console.error("Registration error:", error);

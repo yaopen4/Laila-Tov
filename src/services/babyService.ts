@@ -17,12 +17,42 @@ import {
 import { db } from '@/lib/firebase';
 import type { 
   BabyProfile,
-  BabyFormData 
+   
 } from '@/types/auth';
+import type { BabyFormData } from '@/types';
 import type { SleepRecord } from '@/types';
 import { AuthService } from './authService';
 import { RoleService } from './roleService';
 import { AuditLogger } from './auditLogger';
+import { apiFetch } from '@/lib/apiClient';
+
+
+/**
+ * Sleep record dates are stored as 'YYYY-MM-DD' strings.
+ *
+ * The form supplies a JS Date, which Firestore would persist as a Timestamp; the UI
+ * then reads it back with new Date(...) and gets Invalid Date, crashing date-fns with
+ * "RangeError: Invalid time value". Normalising here keeps one representation.
+ */
+export function toDateKey(value: Date | string | { toDate: () => Date }): string {
+  if (typeof value === 'string') return value.slice(0, 10);
+  const date = value instanceof Date ? value : value.toDate();
+  // Local calendar date, not UTC: toISOString() would shift the day for evening
+  // entries in Asia/Jerusalem.
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** Parse a stored sleep-record date back into a Date, tolerating legacy Timestamps. */
+export function fromDateKey(value: unknown): Date {
+  if (typeof value === 'string') return new Date(`${value}T00:00:00`);
+  if (value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (value instanceof Date) return value;
+  return new Date(NaN);
+}
 
 export class BabyService {
   
@@ -30,90 +60,38 @@ export class BabyService {
    * Create a new baby profile with permission checks
    */
   static async createBabyProfile(
-    babyData: BabyFormData,
+    babyData: BabyFormData & { parentEmail1?: string; parentEmail2?: string },
     coachId: string,
     organizationId: string
-  ): Promise<string> {
-    // Check permissions
-    const hasPermission = await RoleService.userHasPermission(
-      coachId,
-      'babies.create'
-    );
-    
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to create baby profile');
-    }
-
-    // Check role constraints
-    const constraintCheck = await RoleService.checkRoleConstraints(
-      coachId,
-      'create_baby_profile'
-    );
-    
-    if (!constraintCheck.allowed) {
-      throw new Error(constraintCheck.reason || 'Role constraints prevent baby profile creation');
-    }
-
-    const babyRef = doc(collection(db, 'baby_profiles'));
-    
-    const babyProfile: BabyProfile = {
-      id: babyRef.id,
-      name: babyData.name,
-      dateOfBirth: this.calculateDateOfBirth(babyData.age),
-      gender: undefined, // Could be added to form
-      organizationId: organizationId,
-      assignedCoachId: coachId,
-      parentIds: [],
-      status: 'active',
-      createdAt: Timestamp.now(),
-      createdBy: coachId,
-      lastUpdatedAt: Timestamp.now(),
-      settings: {
-        sleepGoals: {
-          nightSleepHours: 10,
-          dayNaps: 2,
-          totalSleepHours: 12
-        },
-        trackingPreferences: {
-          reminderTime: '20:00',
-          autoArchiveAfterDays: 30
-        }
-      },
-      // Legacy fields for backward compatibility
-      familyName: babyData.familyName,
-      age: babyData.age,
-      motherName: babyData.motherName,
-      fatherName: babyData.fatherName,
-      siblingsCount: babyData.siblingsCount,
-      siblingsNames: babyData.siblingsNames,
-      description: babyData.description,
-      parentUsername: babyData.parentUsername || babyRef.id,
-      coachNotes: babyData.coachNotes,
-        isArchived: false,
-        dateArchived: null,
-      lastModified: new Date().toISOString(),
-      inviteCode: babyData.inviteCode || ''
-    };
-
-    await setDoc(babyRef, babyProfile);
-
-    // Update coach's managed baby profiles
-    await this.addBabyToCoachProfile(coachId, babyRef.id);
-
-    // Log audit event
-    await AuditLogger.log({
-      action: 'baby_profile_created',
-      userId: coachId,
-      targetType: 'baby_profile',
-      targetId: babyRef.id,
-      details: {
-        babyName: babyData.name,
-            familyName: babyData.familyName,
-        organizationId: organizationId
-      }
+  ): Promise<{ id: string; invitationCode: string | null; secondInvitationCode: string | null }> {
+    // Delegated to POST /api/babies, which writes the profile and mints the parent
+    // invitation in one place.
+    //
+    // The old client-side version hardcoded inviteCode to '' and dropped both parent
+    // email addresses, so no invitation was ever created and a coach-created baby
+    // could never be linked to a parent -- despite the button reading
+    // "צור פרופיל וקוד הזמנה". It also wrote gender: undefined, which Firestore
+    // rejects outright.
+    return await apiFetch<{
+      id: string;
+      invitationCode: string | null;
+      secondInvitationCode: string | null;
+    }>('/api/babies', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: babyData.name,
+        familyName: babyData.familyName,
+        age: babyData.age,
+        motherName: babyData.motherName,
+        fatherName: babyData.fatherName,
+        siblingsCount: babyData.siblingsCount,
+        siblingsNames: babyData.siblingsNames,
+        description: babyData.description,
+        coachNotes: babyData.coachNotes,
+        parentEmail1: babyData.parentEmail1,
+        parentEmail2: babyData.parentEmail2,
+      }),
     });
-
-    return babyRef.id;
   }
 
   /**
@@ -133,16 +111,15 @@ export class BabyService {
       queryRef = query(
         collection(db, 'baby_profiles'),
         where('organizationId', '==', currentUser.organizationId),
-        orderBy('familyName'),
-        orderBy('name')
+        where('status', '==', 'active'),
+        orderBy('familyName')
       );
     } else if (currentUser.role === 'coach') {
       // Coaches can see their assigned baby profiles
       queryRef = query(
         collection(db, 'baby_profiles'),
         where('assignedCoachId', '==', userId),
-        where('status', '!=', 'archived'),
-        orderBy('status'),
+        where('status', '==', 'active'),
         orderBy('familyName')
       );
     } else if (currentUser.role === 'parent') {
@@ -536,6 +513,61 @@ export class BabyService {
   }
 
   /**
+   * Archived babies for a coach.
+   *
+   * The archive page called this, unarchiveBabyProfile and deleteBabyProfile; none of
+   * the three existed on BabyService, so the whole page threw at runtime. The
+   * ignoreBuildErrors flag in next.config.ts meant the build never said so.
+   */
+  static async getArchivedBabiesForCoach(coachId: string): Promise<BabyProfile[]> {
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'baby_profiles'),
+        where('assignedCoachId', '==', coachId),
+        where('status', '==', 'archived')
+      )
+    );
+    return snapshot.docs
+      .map((docSnap) => docSnap.data() as BabyProfile)
+      .sort((a, b) => (a.familyName ?? '').localeCompare(b.familyName ?? '', 'he'));
+  }
+
+  /** Alias for restoreBabyProfile, which is the name the archive page uses. */
+  static async unarchiveBabyProfile(babyId: string, userId?: string): Promise<void> {
+    return this.restoreBabyProfile(babyId, userId);
+  }
+
+  /**
+   * Permanently delete a baby profile.
+   *
+   * Admin only, matching firestore.rules: a coach archives, an admin deletes. Sleep
+   * records live in a subcollection and are not removed by deleting the parent
+   * document, so they are cleared first — otherwise they would linger unreachable.
+   */
+  static async deleteBabyProfile(babyId: string, userId?: string): Promise<void> {
+    const currentUser = await AuthService.getCurrentUser();
+    if (!currentUser) throw new Error('User not authenticated');
+
+    const actingUserId = userId ?? currentUser.uid;
+
+    if (currentUser.role !== 'admin') {
+      throw new Error('Only an administrator can permanently delete a baby profile');
+    }
+
+    const records = await getDocs(collection(db, 'baby_profiles', babyId, 'sleep_records'));
+    await Promise.all(records.docs.map((record) => deleteDoc(record.ref)));
+    await deleteDoc(doc(db, 'baby_profiles', babyId));
+
+    await AuditLogger.log({
+      action: 'baby_profile_deleted',
+      userId: actingUserId,
+      targetType: 'baby_profile',
+      targetId: babyId,
+      details: { deletedSleepRecords: records.size },
+    });
+  }
+
+  /**
    * Convenience: get sleep records for a baby using the current user
    */
   static async getSleepRecordsForBaby(babyId: string): Promise<SleepRecord[]> {
@@ -598,8 +630,8 @@ export class BabyService {
       action: 'sleep_log_updated',
       targetType: 'sleep_log',
       targetId: recordId,
-      previousValues,
-      newValues: { ...(previousValues || {}), ...(updates as any) }
+      previousValues: previousValues ?? {},
+      newValues: { ...(previousValues ?? {}), ...(updates as any) }
     });
   }
 
@@ -656,6 +688,8 @@ export class BabyService {
     const sleepRecordRef = doc(collection(db, 'baby_profiles', babyId, 'sleep_records'));
     const sleepRecordWithId = {
       ...sleepRecord,
+      // Always a 'YYYY-MM-DD' string, whatever the form handed us.
+      date: toDateKey(sleepRecord.date as unknown as Date | string),
       id: sleepRecordRef.id,
       timestamp: Timestamp.now()
     };

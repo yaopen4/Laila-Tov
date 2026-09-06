@@ -10,8 +10,8 @@ import {
   getDocs,
   Timestamp 
 } from 'firebase/firestore';
-import { auth } from 'firebase/auth';
 import { db } from '@/lib/firebase';
+import { roleHasPermission, getPermissionsForRole } from '@/lib/permissions';
 import type { 
   Permission, 
   Role, 
@@ -251,58 +251,30 @@ export class RoleService {
   }
 
   /**
-   * Check if user has specific permission
+   * Check whether a user has a permission.
+   *
+   * Resolved from the static role -> permission map, keyed off the `role` field on the
+   * user document. The previous implementation queried `user_role_assignments` joined
+   * to `roles`; nothing user-reachable ever wrote those collections, so it returned
+   * false for every user and every permission -- which is what blocked baby creation
+   * and all sleep-data writes.
+   *
+   * This is an advisory check for UI and error messages. The enforced boundary is
+   * firestore.rules plus the server API routes, both keyed off the custom claims.
    */
   static async userHasPermission(
-    userId: string, 
+    userId: string,
     permission: string,
     context?: { babyProfileId?: string; organizationId?: string }
   ): Promise<boolean> {
     try {
-      // Get user's role assignments
       const userDoc = await getDoc(doc(db, 'users', userId));
-      
       if (!userDoc.exists()) return false;
-      
+
       const user = userDoc.data() as User;
-      
-      // Get user's active role assignments
-      const roleAssignments = await getDocs(
-        query(
-          collection(db, 'user_role_assignments'),
-          where('userId', '==', userId),
-          where('isActive', '==', true),
-          where('organizationId', '==', context?.organizationId || user.organizationId)
-        )
-      );
-      
-      // Check each role for the permission
-      for (const assignmentDoc of roleAssignments.docs) {
-        const assignment = assignmentDoc.data() as UserRoleAssignment;
-        
-        // Check if assignment has expired
-        if (assignment.expiresAt && assignment.expiresAt.toDate() < new Date()) {
-          continue;
-        }
-        
-        // Get role details
-        const roleDoc = await getDoc(doc(db, 'roles', assignment.roleId));
-        
-        if (!roleDoc.exists()) continue;
-        
-        const role = roleDoc.data() as Role;
-        
-        if (role.permissions.includes(permission)) {
-          // Check context constraints if applicable
-          if (context?.babyProfileId && assignment.context?.babyProfileIds) {
-            return assignment.context.babyProfileIds.includes(context.babyProfileId);
-          }
-          return true;
-        }
-      }
-      
-      return false;
-      
+      if (user.status && user.status !== 'active') return false;
+
+      return roleHasPermission(user.role, permission);
     } catch (error) {
       console.error('Error checking user permission:', error);
       return false;
@@ -446,41 +418,10 @@ export class RoleService {
    */
   static async getUserPermissions(userId: string): Promise<string[]> {
     const userDoc = await getDoc(doc(db, 'users', userId));
-    
     if (!userDoc.exists()) return [];
-    
+
     const user = userDoc.data() as User;
-    
-    // Get active role assignments
-    const assignments = await getDocs(
-      query(
-        collection(db, 'user_role_assignments'),
-        where('userId', '==', userId),
-        where('isActive', '==', true),
-        where('organizationId', '==', user.organizationId)
-      )
-    );
-    
-    const allPermissions = new Set<string>();
-    
-    for (const assignmentDoc of assignments.docs) {
-      const assignment = assignmentDoc.data() as UserRoleAssignment;
-      
-      // Skip expired assignments
-      if (assignment.expiresAt && assignment.expiresAt.toDate() < new Date()) {
-        continue;
-      }
-      
-      // Get role permissions
-      const roleDoc = await getDoc(doc(db, 'roles', assignment.roleId));
-      
-      if (roleDoc.exists()) {
-        const role = roleDoc.data() as Role;
-        role.permissions.forEach(permission => allPermissions.add(permission));
-      }
-    }
-    
-    return Array.from(allPermissions);
+    return getPermissionsForRole(user.role);
   }
 
   /**
@@ -499,7 +440,8 @@ export class RoleService {
         isSystemRole: true,
         isActive: true,
         permissions: roleData.permissions,
-        constraints: roleData.constraints,
+        // Not every system role defines constraints.
+        constraints: 'constraints' in roleData ? roleData.constraints : undefined,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
         createdBy
@@ -549,6 +491,12 @@ export class RoleService {
     }
 
     const user = userDoc.data() as User;
+
+    if (user.status && user.status !== 'active') {
+      return { allowed: false, reason: 'Account is not active' };
+    }
+
+    // Custom roles are optional; a user with none is unconstrained rather than blocked.
     const assignments = await this.getUserRoleAssignments(userId, user.organizationId);
 
     for (const assignment of assignments) {
@@ -562,7 +510,9 @@ export class RoleService {
       switch (action) {
         case 'create_baby_profile':
           if (role.constraints.maxBabyProfiles) {
-            const currentCount = user.managedBabyProfiles.length;
+            // managedBabyProfiles is absent on older user documents; an unguarded
+            // .length here threw TypeError and failed the whole check.
+            const currentCount = user.managedBabyProfiles?.length ?? 0;
             if (currentCount >= role.constraints.maxBabyProfiles) {
               return { 
                 allowed: false, 

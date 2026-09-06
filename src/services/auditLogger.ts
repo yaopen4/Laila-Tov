@@ -396,6 +396,7 @@ export class AuditLogger {
       
       // System Admin
       'organization_settings_updated': 'system_admin',
+      'system_bootstrapped': 'system_admin',
       'role_created': 'system_admin',
       'system_backup_created': 'system_admin',
       
@@ -406,13 +407,13 @@ export class AuditLogger {
       'invitation_expired': 'user_management',
       'invitation_cancelled': 'user_management',
       'invitation_resent': 'user_management',
-      'role_created': 'system_admin',
       'role_updated': 'system_admin',
       'role_deleted': 'system_admin',
       'permission_granted': 'user_management',
       'permission_revoked': 'user_management',
       'baby_profile_archived': 'data_modification',
       'baby_profile_transferred': 'data_modification',
+      'baby_profile_deleted': 'data_modification',
       'baby_profile_restored': 'data_modification',
       'parent_added_to_baby': 'data_modification',
       'parent_removed_from_baby': 'data_modification',
@@ -750,8 +751,9 @@ export class AuditLogger {
     let dataAccessCount = 0;
     
     reportData.forEach(event => {
-      eventsByCategory[event.category] = (eventsByCategory[event.category] || 0) + 1;
-      eventsBySeverity[event.severity] = (eventsBySeverity[event.severity] || 0) + 1;
+      const category = event.category as AuditCategory;
+      eventsByCategory[category] = (eventsByCategory[category] || 0) + 1;
+      eventsBySeverity[String(event.severity)] = (eventsBySeverity[String(event.severity)] || 0) + 1;
       uniqueUsers.add(event.userId);
       
       if (event.category === 'security') securityIncidents++;

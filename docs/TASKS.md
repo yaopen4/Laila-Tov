@@ -3,8 +3,12 @@
 Comprehensive task tracking for the development and enhancement of the Laila Tov baby sleep tracking platform. 
 This document consolidates requirements from the PRD and features documentation into actionable development tasks.
 
-**Last Updated:** September 10, 2025  
-**Project Status:** Production-ready with enhancement opportunities
+**Last Updated:** September 6, 2026  
+**Project Status:** Core flows working and covered by tests; see `docs/Integration Status Dashboard.md` for what is and is not done.
+
+> Note: this file previously described the project as "production-ready" while signup
+> was structurally impossible and three critical issues were open. Status claims here
+> should be backed by a test.
 
 ## Recently Completed Tasks (September 10, 2025)
 
@@ -18,25 +22,29 @@ This document consolidates requirements from the PRD and features documentation 
   - Files: `src/components/auth/signup-form.tsx`, `src/services/authService.ts`, `src/services/invitationService.ts`, `src/types/index.ts`
   - **Resolution**: Fixed invitation validation logic to properly handle coach invites by adding `invitedEmails` field and updating validation functions
 
-- [ ] **Implement admin invitation cancellation** - Admin cannot cancel pending invitations
-  - Dependencies: Invitation service updates, Admin UI enhancements
-  - Files: `src/services/invitationService.ts`, `src/app/admin/manual-invitations/page.tsx`
+- [x] **Implement admin invitation cancellation** ✅
+  - **Resolution**: Moved to `POST /api/invitations/{id}/cancel`. The client code was
+    already wired correctly, but depended on an admin user document that the broken
+    signup flow could never create. Covered by `tests/api.test.ts`.
 
 ### Baby Management Issues
-- [ ] **Fix baby creation for coaches** - Coaches cannot create new baby profiles
-  - Dependencies: Coach permissions, Baby service validation
-  - Files: `src/services/babyService.ts`, `src/components/coach/add-baby-form.tsx`
+- [x] **Fix baby creation for coaches** ✅
+  - **Root cause**: `RoleService.userHasPermission` resolved permissions only from
+    `user_role_assignments`, which nothing ever wrote — so it returned false for every
+    user. Replaced with a static role→permission map.
+  - Creation moved to `POST /api/babies`, which also issues the parent invitation code
+    the UI had always promised but never created. Covered by `tests/api.test.ts`.
 
 ---
 
 ## In Progress Tasks
 
 ### Security & Production Readiness
-- [ ] **Harden Firestore security rules for production**
-  - Implement comprehensive access controls
-  - Add input validation at database level
-  - Test role-based permissions thoroughly
-  - Files: `firestore.rules`
+- [x] **Harden Firestore security rules for production** ✅
+  - The previous file was duplicated end to end (two `rules_version` declarations), so
+    it could not compile and had never deployed.
+  - Rewritten around custom claims; closed a privilege-escalation path that let users
+    rewrite their own `permissions` array. 38 rules tests in `tests/rules.test.ts`.
 
 - [ ] **Implement comprehensive error handling**
   - Add try-catch blocks for all async operations
@@ -184,12 +192,10 @@ This document consolidates requirements from the PRD and features documentation 
 ## Infrastructure & DevOps Tasks
 
 ### Development Environment
-- [ ] **Implement comprehensive testing suite** PRIORITY: LOW
-  - Unit tests for all services
-  - Integration tests for user flows
-  - End-to-end testing setup
-  - Performance testing
-  - Files: `__tests__/`, test configuration files
+- [~] **Testing suite** — started
+  - Security rules and API route tests run against the Firebase emulators (`npm test`).
+  - Still missing: component tests and a browser-level end-to-end pass.
+  - Files: `tests/rules.test.ts`, `tests/api.test.ts`, `vitest.config.mts`
 
 - [ ] **Set up CI/CD pipeline** PRIORITY: LOW
   - Automated testing on commits
@@ -452,6 +458,27 @@ This document consolidates requirements from the PRD and features documentation 
 
 ---
 
-## Discovered During Work (September 23, 2025)
+## Discovered During Work (September 6, 2026)
 
-- `src/components/shared/permission-based-navigation.tsx` appears unused. Decide to either integrate into `src/app/**/layout.tsx` for role-gated navigation or remove.
+Removed as dead or non-functional:
+
+- `src/components/shared/permission-based-navigation.tsx` — unused; sole consumer of the
+  localStorage permission cache, which has also been removed.
+- `src/services/emailService.ts` — could never send mail (its API key had no
+  `NEXT_PUBLIC_` prefix so it was undefined in the browser, and the package was not
+  installed), yet returned `success: true`, so the UI reported invitations as sent.
+- `src/services/loggingService.ts` — zero imports; wrote to collections with no rules.
+- `src/utils/migrationScript.ts`, `src/utils/testManualInvitation.ts`,
+  `src/app/admin/test-manual-invitations/` — a test harness wired into the production
+  admin sidebar.
+- `src/app/admin/email-invitations/` — a page whose handlers were TODO no-ops.
+- `functions/` — 812 lines of correct Cloud Functions code that `firebase.json` never
+  referenced and no client ever called. Its logic now lives in the API routes.
+- `src/services/manualInvitationService.ts` — merged into `invitationService.ts`.
+
+Still open:
+
+- `next.config.ts` had `ignoreBuildErrors` and `ignoreDuringBuilds` set to `true`, which
+  is why references to undefined types (`EnhancedUser`, used 21 times and declared
+  nowhere) and non-existent functions (`upsertUserDocument`) built cleanly. Both are now
+  `false`; keep them that way.

@@ -1,92 +1,57 @@
-# 📋 Integration Status Dashboard
+# Integration Status
 
-## 🔐 Authentication Components
+**Last updated:** 2026-09-06
 
-| Component | System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| Signup Form | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses authService.ts |
-| Login Form | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses authService.ts |
-| Admin Dashboard | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses authService.ts |
-| Coach Pages | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses authService.ts |
-| Parent Pages | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses authService.ts |
+> The previous version of this document reported "29/29 components, 100% integrated" for a
+> system in which no account could complete signup. It measured whether a component
+> imported a service, not whether the resulting operation succeeded. What follows tracks
+> the latter.
 
-## 👶 Baby Management Components
+## How authorization works now
 
-| Component | System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| Coach Dashboard | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses babyService.ts |
-| Add Baby Page | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses babyService.ts |
-| Coach Babies Page | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses babyService.ts |
-| Parent Pages | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses babyService.ts |
-| Edit Baby Page | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Uses babyService.ts |
+| Layer | Role |
+|---|---|
+| Firebase Auth custom claims (`role`, `organizationId`) | Set server-side at registration. The basis for every check below. |
+| `firestore.rules` | The enforced boundary. Reads claims; no document lookups on hot paths. |
+| Next.js API routes (`src/app/api/**`) | All privileged work, via the Admin SDK. Verifies the caller's ID token. |
+| `src/lib/permissions.ts` | Static role→permission map. Advisory: shapes UI and error messages. |
 
-## 📧 Invitation System Components
+## Working, with test coverage
 
-| Component | System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| Signup Form | ✅ ACTIVE | ✅ INTEGRATED | ❌ No | Validates and registers via invitationService.ts + authService.ts |
-| Admin Dashboard | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses invitationService.ts |
-| Manual Invitations | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses manualInvitationService.ts |
-| Email Templates | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses emailTemplateService.ts |
+| Flow | Verified by |
+|---|---|
+| Registration by invitation code (all roles) | `tests/api.test.ts` |
+| Custom claims set on the new account | `tests/api.test.ts` |
+| Parent linked to the baby their invitation names | `tests/api.test.ts` |
+| Invitation code validation before signup (unauthenticated) | `tests/api.test.ts` |
+| Invitation create / list / cancel, with role scoping | `tests/api.test.ts` |
+| Baby profile creation, issuing a real parent invitation code | `tests/api.test.ts` |
+| First-admin bootstrap, and its refusal to run twice | `tests/api.test.ts` |
+| Family isolation: a parent cannot reach another family's data | `tests/rules.test.ts` |
+| Coach isolation: only babies assigned to them | `tests/rules.test.ts` |
+| Organization isolation, admins included | `tests/rules.test.ts` |
+| Users cannot escalate their own role or permissions | `tests/rules.test.ts` |
+| Clients cannot create users or forge audit logs | `tests/rules.test.ts` |
 
-## 👥 User Management Components
+## Known gaps
 
-| Component | System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| User Management | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses authService.ts + roleService.ts |
-| Role Management | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses roleService.ts |
-| Organization Management | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses organizationService.ts |
+These are real and currently unaddressed. None of them block the core flows.
 
-## 📊 Audit & Monitoring Components
-
-| Component | Enhanced System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| Audit Log Viewer | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses auditLogger.ts |
-| Security Monitoring | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses auditLogger.ts |
-| Compliance Reporting | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Uses auditLogger.ts |
-
-## 🔧 Admin Interface Components
-
-| Component | Enhanced System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| Admin Dashboard | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | 7-tab comprehensive interface |
-| User Management Tab | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Advanced user management |
-| Invitations Tab | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Email invitation management |
-| Manual Invitations Tab | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Manual invitation codes |
-| Email Templates Tab | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Email template management |
-| Roles Tab | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Role and permission management |
-| Audit Tab | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Audit log viewing |
-
-## 🏗️ Data Collections
-
-| Component | Enhanced System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| Collections | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | baby_profiles, invitations, organizations |
-
-## 🔒 Security Rules
-
-| Component | Enhanced System | Integration Status | Admin Access | Notes |
-|-----------|----------------|-------------------|--------------|-------|
-| Security Rules | ✅ ACTIVE | ✅ INTEGRATED | ✅ Yes | Multi-tenant + RBAC; review for SSR parity |
-
-## ⚠️ Known Gaps & Caveats
-
-- Client-side guards only: `admin/layout.tsx` and `coach/layout.tsx` enforce role checks on the client. No Next.js middleware/SSR protection is implemented.
-- Claims simulation: `authService.ts` simulates custom claims via localStorage cache. Ensure Cloud Functions/back-end claims enforcement for production.
-- Firestore rules: Marked integrated for multi-tenant + RBAC, but verify alignment with current role/permission model and new collections.
-- Invitation prevalidation: Implemented in `invitationService.ts` and wired in `signup-form.tsx`; ensure rate limiting and abuse protections (e.g., Cloud Functions) in production.
-- Service-level RBAC: `babyService.ts` enforces RBAC in service methods; rely on Firestore security rules for true enforcement.
----
-
-## 📈 Integration Summary
-
-- **Total Components**: 29
-- **System Active**: 29 components
-- **Fully Integrated**: 29 components
-- **Not Integrated**: 0 components
-- **Admin Access Available**: 20 components
-
-### 📊 Progress Tracking:
-- **Completed**: 100% (29/29 components)
-- **In Progress**: 0 components
-- **Pending**: 0% (0/29 components)
+- **No route-level auth on the server.** `admin/layout.tsx` and `coach/layout.tsx` check
+  the role on the client, so an unauthorized user briefly loads the page shell before
+  being redirected. The data behind it is protected by Firestore rules, so this is a
+  polish issue rather than an exposure. Next.js middleware would close it.
+- **No auth context provider.** Every component calls `AuthService.getCurrentUser()`
+  independently, and each call attaches a fresh `onAuthStateChanged` listener and re-reads
+  the user document. Works, but re-fetches far more than it needs to.
+- **Client-side audit calls are inert.** `AuditLogger` still runs in some client paths;
+  `audit_logs` is client-write-denied by design, and those writes are swallowed. Real
+  audit entries come from the server (`src/lib/server/audit.ts`). The remaining client
+  calls should be removed rather than left looking functional.
+- **Placeholder screens.** `/coach/calendar`, `/coach/reports` and `/coach/settings` are
+  static shells. `/admin/roles` lists system roles but its create/edit/delete buttons are
+  toast-only no-ops — custom roles are not on the authorization path, so nothing depends
+  on them.
+- **No rate limiting** on `/api/invitations/validate` or `/api/auth/register`.
+- **Email templates are stored but unused.** Nothing sends email; invitation codes are
+  shared manually. `/admin/email-templates` works as a content editor only.

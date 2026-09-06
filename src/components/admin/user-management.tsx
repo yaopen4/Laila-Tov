@@ -87,7 +87,9 @@ export function UserManagement() {
       const usersWithPermissions = await Promise.all(
         organizationUsers.map(async (user) => {
           const permissions = await RoleService.getUserPermissions(user.uid);
-          const roleAssignments = await RoleService.getUserRoleAssignments(user.uid, currentUser.organizationId);
+          const roleAssignments = currentUser.organizationId
+            ? await RoleService.getUserRoleAssignments(user.uid, currentUser.organizationId)
+            : [];
           
           return {
             ...user,
@@ -211,7 +213,7 @@ export function UserManagement() {
   );
 
   const getRoleDisplayName = (role: string): string => {
-    const roleNames = {
+    const roleNames: Record<string, string> = {
       admin: 'מנהל מערכת',
       coach: 'יועץ שינה',
       parent: 'הורה'
@@ -220,7 +222,7 @@ export function UserManagement() {
   };
 
   const getStatusDisplayName = (status: string): string => {
-    const statusNames = {
+    const statusNames: Record<string, string> = {
       active: 'פעיל',
       inactive: 'לא פעיל',
       suspended: 'מושעה'

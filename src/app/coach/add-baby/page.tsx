@@ -62,33 +62,10 @@ export default function AddBabyPage() {
           }
         } else if (user && !user.role) {
           // User exists but has no role - try to fix it
-          toast({
-            title: "מתקן הרשאות...",
-            description: "מזוהה בעיה בהרשאות. מנסה לתקן...",
-          });
-          
-          const auth = getAuth();
-          const firebaseUser = auth.currentUser;
-          if (firebaseUser) {
-            try {
-              console.log('Attempting to fix user role for:', firebaseUser.uid);
-              const fixed = await upsertUserDocument(firebaseUser, { role: 'coach' });
-              console.log('Fixed user document:', fixed);
-              
-              if (fixed.role === 'coach') {
-                setCoachUid(firebaseUser.uid);
-                setAuthError(null);
-                toast({
-                  title: "הרשאות תוקנו!",
-                  description: "כעת תוכל ליצור פרופילי תינוקות.",
-                });
-                return;
-              }
-            } catch (fixError) {
-              console.error('Error fixing user role:', fixError);
-            }
-          }
-          
+          // A role lives in the account's custom claims, set server-side at
+          // registration. There is no client-side repair for a missing one -- the
+          // previous code here called upsertUserDocument, which is defined nowhere
+          // in the repository and threw ReferenceError every time.
           setAuthError("אין הרשאה ליצור פרופילי תינוקות - תפקיד המשתמש לא מוגדר כיועצת");
           router.push('/coach/dashboard');
           toast({
@@ -156,19 +133,36 @@ export default function AddBabyPage() {
       }
       console.log('Coach verification successful');
       
-      // Get organization ID from current user
-      const organizationId = currentUser.organizationId || 'default-org';
-      
-      // Create baby profile using service
-      const babyId = await BabyService.createBabyProfile(
+      // The 'default-org' fallback that used to be here guaranteed a mismatch with
+      // firestore.rules, which compares the document's organizationId against the
+      // caller's. The organization now comes from the account's claims server-side.
+      const organizationId = currentUser.organizationId;
+      if (!organizationId) {
+        toast({
+          title: "שגיאת הרשאות",
+          description: "לחשבון לא משויך ארגון. יש לפנות למנהל המערכת.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const result = await BabyService.createBabyProfile(
         values,
         coachUid,
         organizationId
       );
-      
+      const babyId = result.id;
+
+      // Report the code that was actually issued, rather than promising one that was
+      // never created (inviteCode used to be hardcoded to '').
+      const codeMessage = result.invitationCode
+        ? ` קוד ההזמנה להורה: ${result.invitationCode}`
+        : ' לא הוזן אימייל הורה, ולכן לא נוצר קוד הזמנה.';
+
       toast({
         title: "פרופיל תינוק נוצר בהצלחה!",
-        description: `הפרופיל עבור ${values.name} ${values.familyName} נוסף. תוכל למצוא את קוד ההזמנה בעריכת הפרופיל.`,
+        description: `הפרופיל עבור ${values.name} ${values.familyName} נוסף.${codeMessage}`,
         duration: 7000,
       });
       router.push('/coach/dashboard');

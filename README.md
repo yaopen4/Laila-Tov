@@ -57,13 +57,146 @@ All data is synchronized securely through Firebase. Each user’s permissions ar
 
 ---
 
-## Security
+## Architecture
 
-The app uses Firebase Authentication for identity and Firestore rules to enforce data isolation:  
-- Parents can only access their own baby’s records.  
-- Coaches can access only their assigned babies.  
-- Admins have full control for maintenance and oversight.
+The app is a Next.js front end talking to Firebase, plus a small server layer.
 
-Before deployment, appropriate Firestore security rules must be applied to protect user data.
+**Authorization keys off Firebase Auth custom claims.** `role` and `organizationId` are
+set server-side with the Admin SDK when an account is created, so `firestore.rules` can
+read `request.auth.token.role` directly instead of fetching a user document to decide
+whether that document may be read.
+
+**Privileged work happens in Next.js API routes** (`src/app/api/**`), not in the browser.
+Creating accounts, setting claims, minting and cancelling invitation codes, and writing
+audit logs all require the Admin SDK. Running them server-side keeps Firestore rules able
+to deny those writes to clients outright.
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `POST /api/auth/register` | none | Redeem a code: create the account, set claims, link a parent to their baby |
+| `GET /api/invitations/validate` | none | Check a code from the signup page, before any account exists |
+| `POST /api/invitations` | admin, coach | Mint an invitation code |
+| `GET /api/invitations` | admin, coach | List invitations (admin: whole org, coach: their own) |
+| `POST /api/invitations/{id}/cancel` | admin, coach | Soft-cancel, keeping history |
+| `POST /api/babies` | coach, admin | Create a baby profile and its parent invitation together |
+| `POST /api/admin/bootstrap` | shared secret | Create the first organization and admin |
+
+**Permissions** come from a static role-to-permission map (`src/lib/permissions.ts`) — no
+Firestore lookup, so a permission check cannot fail merely because a collection is empty.
+That map is advisory, for UI and error messages; the enforced boundary is
+`firestore.rules` plus the API routes.
+
+**Invitations are delivered manually.** A coach or admin generates a code and shares it
+directly. There is no email provider and nothing to configure.
 
 ---
+
+## Getting started
+
+Requirements: Node 20+, and a JDK 21+ for the Firestore emulator (`npm run emulators`
+finds a suitable JDK automatically and will tell you how to install one if there is none).
+
+```bash
+npm install
+cp .env.example .env.local     # defaults target the emulators; no edits needed
+```
+
+Then, in two terminals:
+
+```bash
+npm run emulators              # Firebase Auth + Firestore, local and free
+npm run seed                   # demo organization, users, baby and sleep data
+```
+
+```bash
+npm run dev                    # http://localhost:9002
+```
+
+The seed prints its logins. All use the password `Password123!`:
+
+| Role | Email |
+|---|---|
+| Admin | `admin@lailatov.test` |
+| Coach | `coach@lailatov.test` |
+| Parent | `parent@lailatov.test` |
+
+It also leaves an unused invitation code, `DEMO2468`, so the signup flow can be tried
+immediately.
+
+No Firebase project or credentials are required for any of this — the emulators run
+entirely offline, and the `demo-` project prefix guarantees nothing reaches a real
+project.
+
+### Checks
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm test            # starts emulators, runs the suite, shuts them down
+npm run build
+```
+
+The test suite covers the security rules (family isolation, cross-organization access,
+privilege escalation) and the API routes (registration, invitation lifecycle, baby
+creation). Rules tests matter most: rules are the real boundary, since anything in the
+client can be bypassed by talking to Firestore directly.
+
+---
+
+## Deploying
+
+Everything below fits in free tiers. Cloud Functions are not used, so the Firebase
+**Spark** plan is sufficient — no billing account required.
+
+**1. Create a Firebase project**, enable Email/Password authentication and Firestore.
+
+**2. Deploy rules and indexes:**
+
+```bash
+npx firebase use --add            # select your project
+npx firebase deploy --only firestore
+```
+
+**3. Host the app** on Vercel's free tier or Firebase App Hosting — both run the Next.js
+API routes. Set these environment variables on the host:
+
+| Variable | Notes |
+|---|---|
+| `NEXT_PUBLIC_FIREBASE_*` | From Firebase Console → Project settings. Not secret. |
+| `NEXT_PUBLIC_USE_EMULATORS` | `false` |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | **Secret.** The service-account JSON on one line, from Project settings → Service accounts. Never commit it. |
+| `ADMIN_BOOTSTRAP_SECRET` | A long random string. Rotate or unset after first use. |
+
+**4. Create the first admin.** Invitations can only be issued by an admin, and admins are
+created by redeeming an invitation, so one has to be seeded:
+
+```bash
+curl -X POST https://your-app/api/admin/bootstrap   -H "Content-Type: application/json"   -d '{"secret":"<ADMIN_BOOTSTRAP_SECRET>","email":"you@example.com",
+       "password":"<strong password>","displayName":"Your Name",
+       "organizationName":"Your Clinic"}'
+```
+
+The endpoint refuses to run once any admin exists. Unset `ADMIN_BOOTSTRAP_SECRET`
+afterwards.
+
+From there: sign in as the admin, invite a coach, and the coach invites parents when
+they create a baby profile.
+
+---
+
+## Security
+
+Authorization is enforced in two places, both server-side:
+
+- **`firestore.rules`** — the real boundary. Parents reach only their own baby's records;
+  coaches only babies assigned to them; admins only their own organization. Users cannot
+  modify their own `role`, `permissions`, `status`, or baby assignments, and no client can
+  create a user document or write an audit log.
+- **API routes** — verify the caller's Firebase ID token with the Admin SDK and check role
+  and permission before acting.
+
+Client-side role checks exist only to shape the UI. They are not a security boundary and
+are not treated as one.
+
+**Secrets:** the `NEXT_PUBLIC_FIREBASE_*` values are not secret (a web API key identifies a
+project, it does not authenticate). `FIREBASE_SERVICE_ACCOUNT_KEY` and
+`ADMIN_BOOTSTRAP_SECRET` are, and belong only in `.env.local` or your host's secret store.

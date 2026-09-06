@@ -27,6 +27,8 @@ import type {
 import { RoleService } from './roleService';
 import { AuditLogger } from './auditLogger';
 import { InvitationService } from './invitationService';
+import { apiFetchPublic } from '@/lib/apiClient';
+import { getRedirectPathForRole } from '@/lib/permissions';
 
 // AuthUser interface that extends Firebase User with our custom data
 export interface AuthUser extends FirebaseUser {
@@ -43,7 +45,20 @@ export class AuthService {
   private static invitationService = new InvitationService();
 
   /**
-   * Enhanced user registration with invitation validation
+   * Register by redeeming an invitation code.
+   *
+   * Delegates to POST /api/auth/register, which does the whole thing with the Admin
+   * SDK: create the Auth user, set the role/organizationId custom claims, write the
+   * user document, mark the invitation redeemed, and link a parent to their baby.
+   *
+   * The client cannot do this itself. Creating /users/{uid} is gated on a rule that
+   * reads /users/{uid}, so the first write was always denied; the old code then
+   * deleted the freshly created Auth account, and every registration rolled itself
+   * back. Custom claims also require the Admin SDK -- the previous version "simulated"
+   * them in localStorage, which no security rule can trust.
+   *
+   * After the server responds we sign in normally, so the resulting ID token carries
+   * the claims.
    */
   static async registerWithInvitation(
     invitationCode: string,
@@ -52,131 +67,35 @@ export class AuthService {
     displayName: string
   ): Promise<{
     success: boolean;
-    user?: EnhancedAuthUser;
+    user?: AuthUser;
+    redirectPath?: string;
     error?: string;
   }> {
-    const startTime = Date.now();
-
     try {
-      // Log registration attempt
-      await AuditLogger.log({
-        action: 'user_registered',
-        userId: 'anonymous',
-        details: {
-          email,
-          invitationCode,
-          step: 'validation_start'
-        }
+      const result = await apiFetchPublic<{
+        uid: string;
+        role: 'admin' | 'coach' | 'parent';
+        organizationId: string;
+        redirectPath: string;
+      }>('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ invitationCode, email, password, displayName }),
       });
 
-      // Validate invitation
-      const invitation = await this.invitationService.getInvitationByCode(invitationCode);
-      
-      if (!invitation) {
-        return { 
-          success: false, 
-          error: 'Invalid invitation code' 
-        };
-      }
-
-      if (invitation.email.toLowerCase() !== email.toLowerCase()) {
-        return { 
-          success: false, 
-          error: 'Email does not match invitation' 
-        };
-      }
-
-      // Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(
-        firebaseAuthInstance, 
-        email, 
-        password
-      );
-      const firebaseUser = userCredential.user;
-
-      try {
-        // Accept invitation and create enhanced user
-        const acceptResult = await this.invitationService.acceptInvitation(
-          invitationCode, 
-          firebaseUser.uid
-        );
-
-        if (!acceptResult.success) {
-          // Clean up Firebase user if invitation acceptance fails
-          await firebaseUser.delete();
-          return {
-            success: false,
-            error: acceptResult.error || 'Failed to accept invitation'
-          };
-        }
-
-        // Update user profile with display name
-        await updateDoc(doc(db, 'users', firebaseUser.uid), {
-          displayName: displayName
-        });
-
-        // Get the complete user data
-        const enhancedUser = await this.getEnhancedUserData(firebaseUser.uid);
-        
-        if (!enhancedUser) {
-          throw new Error('Failed to retrieve user data after registration');
-        }
-
-        // Update Firebase Auth custom claims
-        // Note: This would normally be done by Cloud Functions with Admin SDK
-        // For client-side, we simulate this with local storage or context
-        await this.updateUserPermissionsCache(enhancedUser);
-
-        // Log successful registration
-        await AuditLogger.log({
-          action: 'user_registered',
-          userId: firebaseUser.uid,
-          targetType: 'user',
-          targetId: firebaseUser.uid,
-          details: {
-            email: enhancedUser.email,
-            role: enhancedUser.role,
-            organizationId: enhancedUser.organizationId,
-            invitationCode,
-            duration: Date.now() - startTime
-          }
-        });
-
-        return {
-          success: true,
-          user: this.convertToAuthUser(firebaseUser, enhancedUser)
-        };
-
-      } catch (setupError) {
-        // Clean up Firebase user if setup fails
-        try {
-          await firebaseUser.delete();
-        } catch (deleteError) {
-          console.error('Failed to clean up Firebase user:', deleteError);
-        }
-        throw setupError;
-      }
-
-    } catch (error) {
-      console.error('Registration failed:', error);
-
-      // Log failed registration
-      await AuditLogger.log({
-        action: 'user_registered',
-        userId: 'anonymous',
-        details: {
-          email,
-          invitationCode,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          duration: Date.now() - startTime
-        },
-        success: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      });
+      // Sign in to pick up an ID token containing the new claims.
+      const credential = await signInWithEmailAndPassword(firebaseAuthInstance, email, password);
+      const enhancedUser = await this.getEnhancedUserData(credential.user.uid);
 
       return {
+        success: true,
+        user: enhancedUser ? this.convertToAuthUser(credential.user, enhancedUser) : undefined,
+        redirectPath: result.redirectPath,
+      };
+    } catch (error) {
+      console.error('Registration failed:', error);
+      return {
         success: false,
-        error: error instanceof Error ? error.message : 'Registration failed'
+        error: error instanceof Error ? error.message : 'ההרשמה נכשלה. נסה שוב.',
       };
     }
   }
@@ -187,7 +106,7 @@ export class AuthService {
   static async loginWithEmail(
     email: string, 
     password: string
-  ): Promise<EnhancedAuthUser> {
+  ): Promise<AuthUser> {
     const startTime = Date.now();
     const normalizedEmail = email.toLowerCase();
 
@@ -226,7 +145,6 @@ export class AuthService {
       });
 
       // Update permissions cache
-      await this.updateUserPermissionsCache(enhancedUser);
 
       // Log successful login
       await AuditLogger.logSession({
@@ -328,7 +246,7 @@ export class AuthService {
    * Enhanced auth state change listener
    */
   static onAuthStateChanged(
-    callback: (user: EnhancedAuthUser | null) => void
+    callback: (user: AuthUser | null) => void
   ): () => void {
     return firebaseOnAuthStateChanged(firebaseAuthInstance, async (firebaseUser) => {
       if (firebaseUser) {
@@ -354,7 +272,7 @@ export class AuthService {
   /**
    * Get current authenticated user with enhanced data
    */
-  static async getCurrentUser(): Promise<EnhancedAuthUser | null> {
+  static async getCurrentUser(): Promise<AuthUser | null> {
     return new Promise((resolve) => {
       const unsubscribe = firebaseOnAuthStateChanged(firebaseAuthInstance, async (firebaseUser) => {
         unsubscribe();
@@ -454,15 +372,15 @@ export class AuthService {
   /**
    * Role-based access checks
    */
-  static isAdmin(user: EnhancedAuthUser | null): boolean {
+  static isAdmin(user: AuthUser | null): boolean {
     return user?.role === 'admin';
   }
 
-  static isCoach(user: EnhancedAuthUser | null): boolean {
+  static isCoach(user: AuthUser | null): boolean {
     return user?.role === 'coach';
   }
 
-  static isParent(user: EnhancedAuthUser | null): boolean {
+  static isParent(user: AuthUser | null): boolean {
     return user?.role === 'parent';
   }
 
@@ -471,11 +389,12 @@ export class AuthService {
    */
   static async ensureSameOrganization(
     targetUserId: string,
-    currentUser?: EnhancedAuthUser
+    currentUser?: AuthUser
   ): Promise<boolean> {
     if (!currentUser) {
-      currentUser = await this.getCurrentUser();
-      if (!currentUser) return false;
+      const resolved = await this.getCurrentUser();
+      if (!resolved) return false;
+      currentUser = resolved;
     }
 
     const targetUser = await this.getEnhancedUserData(targetUserId);
@@ -488,12 +407,12 @@ export class AuthService {
   /**
    * Get enhanced user data from Firestore
    */
-  private static async getEnhancedUserData(userId: string): Promise<EnhancedUser | null> {
+  private static async getEnhancedUserData(userId: string): Promise<User | null> {
     try {
       const userDoc = await getDoc(doc(db, 'users', userId));
       
       if (userDoc.exists()) {
-        return userDoc.data() as EnhancedUser;
+        return userDoc.data() as User;
       }
       
       return null;
@@ -504,12 +423,12 @@ export class AuthService {
   }
 
   /**
-   * Convert Firebase User + Enhanced User data to EnhancedAuthUser
+   * Convert a Firebase User plus its user document into an AuthUser.
    */
   private static convertToAuthUser(
     firebaseUser: FirebaseUser,
-    enhancedUser: EnhancedUser
-  ): EnhancedAuthUser {
+    enhancedUser: User
+  ): AuthUser {
     return {
       ...firebaseUser,
       role: enhancedUser.role,
@@ -523,84 +442,19 @@ export class AuthService {
   }
 
   /**
-   * Update user permissions cache (client-side simulation)
-   */
-  private static async updateUserPermissionsCache(user: EnhancedUser): Promise<void> {
-    try {
-      // In a real implementation, this would be handled by Firebase Cloud Functions
-      // with the Admin SDK. For client-side, we can store in localStorage or context
-      
-      const permissionsCache = {
-        userId: user.uid,
-        permissions: user.permissions,
-        role: user.role,
-        organizationId: user.organizationId,
-        lastUpdated: Date.now()
-      };
-      
-      localStorage.setItem('userPermissionsCache', JSON.stringify(permissionsCache));
-      
-    } catch (error) {
-      console.error('Error updating permissions cache:', error);
-    }
-  }
-
-  /**
-   * Get cached permissions (client-side)
-   */
-  static getCachedPermissions(): string[] {
-    try {
-      const cache = localStorage.getItem('userPermissionsCache');
-      if (cache) {
-        const parsed = JSON.parse(cache);
-        // Check if cache is recent (less than 1 hour old)
-        if (Date.now() - parsed.lastUpdated < 60 * 60 * 1000) {
-          return parsed.permissions || [];
-        }
-      }
-    } catch (error) {
-      console.error('Error getting cached permissions:', error);
-    }
-    return [];
-  }
-
-  /**
-   * Clear permissions cache
-   */
-  static clearPermissionsCache(): void {
-    try {
-      localStorage.removeItem('userPermissionsCache');
-    } catch (error) {
-      console.error('Error clearing permissions cache:', error);
-    }
-  }
-
-  /**
-   * Refresh user permissions from server
+   * Current user's permissions, derived from their role.
+   *
+   * Replaces a localStorage-backed "custom claims simulation". Storing an
+   * authorization decision somewhere the subject can edit is not a cache, it is an
+   * open door -- and rules and API routes could never have trusted it. Real claims
+   * now live in the signed ID token, set server-side at registration.
    */
   static async refreshUserPermissions(userId?: string): Promise<string[]> {
     try {
       const currentUser = await this.getCurrentUser();
       const targetUserId = userId || currentUser?.uid;
-      
       if (!targetUserId) return [];
-
-      // Get fresh permissions from role service
-      const permissions = await RoleService.getUserPermissions(targetUserId);
-      
-      // Update cache
-      if (targetUserId === currentUser?.uid) {
-        const enhancedUser = await this.getEnhancedUserData(targetUserId);
-        if (enhancedUser) {
-          await this.updateUserPermissionsCache({
-            ...enhancedUser,
-            permissions
-          });
-        }
-      }
-      
-      return permissions;
-      
+      return await RoleService.getUserPermissions(targetUserId);
     } catch (error) {
       console.error('Error refreshing user permissions:', error);
       return [];
@@ -631,21 +485,8 @@ export class AuthService {
   /**
    * Get user's redirect path based on role and context
    */
-  static getRedirectPath(user: EnhancedAuthUser): string {
-    switch (user.role) {
-      case 'admin':
-        return '/admin/dashboard';
-      case 'coach':
-        return '/coach/dashboard';
-      case 'parent':
-        // For parents, redirect to their baby's page if they have one
-        if (user.managedBabyProfiles && user.managedBabyProfiles.length > 0) {
-          return `/parent/${user.managedBabyProfiles[0]}`;
-        }
-        return '/parent/dashboard';
-      default:
-        return '/';
-    }
+  static getRedirectPath(user: AuthUser): string {
+    return getRedirectPathForRole(user.role, user.managedBabyProfiles ?? []);
   }
 }
 

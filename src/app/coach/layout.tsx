@@ -124,8 +124,8 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3 px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:justify-center">
             <User className="h-4 w-4 shrink-0" />
             <div className="truncate group-data-[collapsible=icon]:hidden">
-              <div className="font-medium text-foreground truncate" title={currentUser?.name || ''}>
-                {currentUser?.name || 'לא זמין'}
+              <div className="font-medium text-foreground truncate" title={currentUser?.displayName || ''}>
+                {currentUser?.displayName || 'לא זמין'}
               </div>
               <div className="text-xs truncate" title={currentUser?.email || ''}>
                 {currentUser?.email || 'לא זמין'}

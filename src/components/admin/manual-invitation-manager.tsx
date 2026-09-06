@@ -55,9 +55,16 @@ import {
   Users
 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { ManualInvitationService, type CreateManualInvitationParams } from '@/services/manualInvitationService';
+import {
+  InvitationService,
+  type CreateInvitationParams,
+  type InvitationSummary,
+} from '@/services/invitationService';
 import { AuthService } from '@/services/authService';
 import type { Invitation } from '@/types/auth';
+
+// Module-scoped: the previous code constructed a new service on every render.
+const invitationService = new InvitationService();
 
 interface InvitationFormData {
   email: string;
@@ -67,7 +74,7 @@ interface InvitationFormData {
   assignedCoachId?: string;
 }
 
-interface InvitationWithDetails extends Invitation {
+interface InvitationWithDetails extends InvitationSummary {
   daysUntilExpiry: number;
   isExpired: boolean;
 }
@@ -91,7 +98,7 @@ export function ManualInvitationManager() {
   const [isCreating, setIsCreating] = useState(false);
   const { toast } = useToast();
 
-  const manualInvitationService = new ManualInvitationService();
+
 
   useEffect(() => {
     loadInvitations();
@@ -104,12 +111,13 @@ export function ManualInvitationManager() {
       const currentUser = await AuthService.getCurrentUser();
       if (!currentUser?.organizationId) return;
 
-      const pendingInvitations = await manualInvitationService.getPendingInvitations(currentUser.organizationId);
+      const pendingInvitations = await invitationService.getPendingInvitations(currentUser.organizationId);
       
       // Enrich invitations with additional details
       const invitationsWithDetails: InvitationWithDetails[] = pendingInvitations.map(invitation => {
         const now = new Date();
-        const expiryDate = invitation.expiresAt.toDate();
+        // The API serialises timestamps as ISO strings.
+        const expiryDate = invitation.expiresAt ? new Date(invitation.expiresAt) : new Date(0);
         const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         const isExpired = now > expiryDate;
 
@@ -151,7 +159,7 @@ export function ManualInvitationManager() {
         return;
       }
 
-      const params: CreateManualInvitationParams = {
+      const params: CreateInvitationParams = {
         email: inviteForm.email,
         role: inviteForm.role,
         organizationId: currentUser.organizationId!,
@@ -163,7 +171,7 @@ export function ManualInvitationManager() {
         }
       };
 
-      const result = await manualInvitationService.createManualInvitation(params);
+      const result = await invitationService.createManualInvitation(params);
 
       if (result.success && result.invitation && result.invitationCode) {
         toast({
@@ -239,7 +247,7 @@ export function ManualInvitationManager() {
       const currentUser = await AuthService.getCurrentUser();
       if (!currentUser) return;
 
-      await manualInvitationService.cancelInvitation(invitationToDelete, currentUser.uid);
+      await invitationService.cancelInvitation(invitationToDelete, currentUser.uid);
 
       toast({
         title: "הזמנה בוטלה",
@@ -390,7 +398,7 @@ export function ManualInvitationManager() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {invitation.createdAt.toDate().toLocaleDateString('he-IL')}
+                        {invitation.createdAt ? new Date(invitation.createdAt).toLocaleDateString('he-IL') : '—'}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -581,13 +589,13 @@ export function ManualInvitationManager() {
                 <div>
                   <Label className="text-sm font-medium">תאריך יצירה</Label>
                   <p className="text-sm text-muted-foreground">
-                    {selectedInvitation.createdAt.toDate().toLocaleString('he-IL')}
+                    {selectedInvitation.createdAt ? new Date(selectedInvitation.createdAt).toLocaleString('he-IL') : '—'}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">תוקף</Label>
                   <p className="text-sm text-muted-foreground">
-                    {selectedInvitation.expiresAt.toDate().toLocaleString('he-IL')}
+                    {selectedInvitation.expiresAt ? new Date(selectedInvitation.expiresAt).toLocaleString('he-IL') : '—'}
                   </p>
                 </div>
                 <div>
@@ -598,29 +606,29 @@ export function ManualInvitationManager() {
                 </div>
               </div>
               
-              {selectedInvitation.metadata.welcomeMessage && (
+              {selectedInvitation.welcomeMessage && (
                 <div>
                   <Label className="text-sm font-medium">הודעה אישית</Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {selectedInvitation.metadata.welcomeMessage}
+                    {selectedInvitation.welcomeMessage}
                   </p>
                 </div>
               )}
 
-              {selectedInvitation.metadata.babyProfileId && (
+              {selectedInvitation.babyProfileId && (
                 <div>
                   <Label className="text-sm font-medium">מזהה תינוק</Label>
                   <p className="text-sm text-muted-foreground">
-                    {selectedInvitation.metadata.babyProfileId}
+                    {selectedInvitation.babyProfileId}
                   </p>
                 </div>
               )}
 
-              {selectedInvitation.metadata.assignedCoachId && (
+              {selectedInvitation.assignedCoachId && (
                 <div>
                   <Label className="text-sm font-medium">יועץ מוקצה</Label>
                   <p className="text-sm text-muted-foreground">
-                    {selectedInvitation.metadata.assignedCoachId}
+                    {selectedInvitation.assignedCoachId}
                   </p>
                 </div>
               )}

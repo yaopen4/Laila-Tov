@@ -76,9 +76,17 @@ export function AuditLogViewer() {
       const currentUser = await AuthService.getCurrentUser();
       if (!currentUser?.organizationId) return;
 
+      // searchAuditLogs takes arrays for action/category/severity; the filter UI
+      // holds a single value for each.
       const result = await AuditLogger.searchAuditLogs({
         organizationId: currentUser.organizationId,
-        ...filters,
+        userId: filters.userId,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        successOnly: filters.successOnly,
+        categories: filters.category ? [filters.category] : undefined,
+        severity: filters.severity ? [filters.severity] : undefined,
+        actions: filters.action ? [filters.action] : undefined,
         limitCount: 50,
         offset: (currentPage - 1) * 50
       });

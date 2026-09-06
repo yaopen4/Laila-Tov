@@ -43,6 +43,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { AuthService as AuthServiceTypeOnly, type AuthUser } from '@/services/authService';
 import { Skeleton } from '@/components/ui/skeleton';
+import { fromDateKey } from '@/services/babyService';
 
 
 export default function ParentBabyPage() {
@@ -322,7 +323,7 @@ export default function ParentBabyPage() {
           <CardHeader>
             <CardTitle className="text-xl flex items-center gap-2">
               <History className="h-5 w-5" />
-              עדכון שינה אחרון ({format(new Date(latestRecord.date), "PPP", { locale: he })})
+              עדכון שינה אחרון ({format(fromDateKey(latestRecord.date), "PPP", { locale: he })})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -353,7 +354,7 @@ export default function ParentBabyPage() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>אישור מחיקת רשומה</AlertDialogTitle>
                     <AlertDialogDescription>
-                      האם אתה בטוח שברצונך למחוק את רשומת השינה מתאריך {latestRecord ? format(new Date(latestRecord.date), "PPP", { locale: he }) : ''}?
+                      האם אתה בטוח שברצונך למחוק את רשומת השינה מתאריך {latestRecord ? format(fromDateKey(latestRecord.date), "PPP", { locale: he }) : ''}?
                       לא ניתן לשחזר פעולה זו.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
@@ -376,7 +377,7 @@ export default function ParentBabyPage() {
           <DialogHeader>
             <DialogTitle>עריכת רשומת שינה</DialogTitle>
             <DialogDescription>
-              עדכן את פרטי השינה עבור {baby.name} לתאריך {recordToEdit ? format(new Date(recordToEdit.date), "PPP", { locale: he }) : ''}.
+              עדכן את פרטי השינה עבור {baby.name} לתאריך {recordToEdit ? format(fromDateKey(recordToEdit.date), "PPP", { locale: he }) : ''}.
             </DialogDescription>
           </DialogHeader>
           {recordToEdit && baby && (
@@ -418,7 +419,7 @@ export default function ParentBabyPage() {
               <Card key={record.id} className="shadow-md">
                 <CardHeader className="pb-3 pt-4 px-4">
                   <CardTitle className="text-lg">
-                    {format(new Date(record.date), "PPP", { locale: he })}
+                    {format(fromDateKey(record.date), "PPP", { locale: he })}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 px-4 pb-4">

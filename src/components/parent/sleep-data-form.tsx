@@ -31,6 +31,7 @@ import { he } from 'date-fns/locale';
 import { CalendarIcon, PlusCircle, Send, Trash2, BedDouble, Timer, UserCircle2, Moon, Sunrise } from 'lucide-react';
 import type { SleepRecord, SleepRecordFormData } from "@/types";
 import { useEffect } from "react";
+import { fromDateKey } from '@/services/babyService';
 
 // Zod schema for a single sleep cycle
 const sleepCycleSchema = z.object({
@@ -90,7 +91,7 @@ export function SleepDataForm({
     resolver: zodResolver(sleepRecordSchema),
     defaultValues: initialData
       ? { 
-          date: new Date(initialData.date), 
+          date: fromDateKey(initialData.date), 
           sleepCycles: initialData.sleepCycles.map(sc => ({
             ...sc,
             wakeTime: sc.wakeTime || "", 
@@ -105,7 +106,7 @@ export function SleepDataForm({
   useEffect(() => {
     if (initialData) {
       form.reset({
-        date: new Date(initialData.date),
+        date: fromDateKey(initialData.date),
         sleepCycles: initialData.sleepCycles.map(sc => ({
           ...sc,
           wakeTime: sc.wakeTime || "",

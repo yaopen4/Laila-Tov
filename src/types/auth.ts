@@ -1,5 +1,6 @@
 // User Management Types for Advanced RBAC System
 import type { Timestamp } from 'firebase/firestore';
+import type { SleepRecord } from './index';
 
 // ============== PERMISSION SYSTEM ==============
 
@@ -226,6 +227,11 @@ export interface BabyProfile {
   dateArchived?: string | null;
   lastModified: string;
   inviteCode: string;
+
+  /** Hydrated separately by callers that need recent sleep data (e.g. baby cards). */
+  sleepRecords?: SleepRecord[];
+  /** Parent addresses captured on the create form, for redisplay when editing. */
+  parentEmails?: string[];
 }
 
 // ============== AUDIT SYSTEM ==============
@@ -246,7 +252,7 @@ export interface AuditLogEntry {
   severity: 'low' | 'medium' | 'high' | 'critical';
   
   // Target information
-  targetType?: 'user' | 'baby_profile' | 'sleep_log' | 'role' | 'organization' | 'invitation';
+  targetType?: 'user' | 'baby_profile' | 'sleep_log' | 'role' | 'organization' | 'invitation' | 'report';
   targetId?: string;
   targetUserId?: string; // If action affects another user
   
@@ -282,7 +288,7 @@ export type AuditAction =
   
   // Baby Profile Management
   | 'baby_profile_created' | 'baby_profile_updated' | 'baby_profile_archived'
-  | 'baby_profile_transferred' | 'baby_profile_restored'
+  | 'baby_profile_transferred' | 'baby_profile_restored' | 'baby_profile_deleted'
   | 'parent_added_to_baby' | 'parent_removed_from_baby'
   
   // Sleep Data
@@ -298,7 +304,7 @@ export type AuditAction =
   | 'dashboard_viewed' | 'analytics_accessed'
   
   // System Administration
-  | 'organization_settings_updated' | 'system_backup_created'
+  | 'organization_settings_updated' | 'system_backup_created' | 'system_bootstrapped'
   | 'data_migration_started' | 'data_migration_completed'
   | 'security_incident_detected' | 'suspicious_activity_blocked'
   

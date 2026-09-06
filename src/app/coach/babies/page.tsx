@@ -174,7 +174,7 @@ export default function CoachBabiesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {new Date(baby.createdAt).toLocaleDateString('he-IL')}
+                    {baby.createdAt?.toDate?.().toLocaleDateString('he-IL') ?? '—'}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
