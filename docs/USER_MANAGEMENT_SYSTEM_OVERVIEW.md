@@ -1,5 +1,13 @@
 # User Management System - Comprehensive Overview
 
+> **Correction (2026-09-07).** Parts of this document describe an earlier design.
+> Authorization now keys off Firebase Auth **custom claims** (`role`,
+> `organizationId`) set server-side, and permissions resolve from a static
+> role→permission map in `src/lib/permissions.ts` — not from the `roles` /
+> `user_role_assignments` collections, which are no longer on the authorization
+> path. Privileged operations run in Next.js API routes, not Cloud Functions.
+> See `README.md` for the current architecture.
+
 **Version**: User Management System v1.0  
 **Date**: December 19, 2024  
 **Status**: ✅ Production Ready
@@ -27,8 +35,8 @@ The User Management System is a comprehensive, multi-tenant Role-Based Access Co
 ```
 📁 organizations/          - Multi-tenant organization data
 📁 users/                 - User profiles with organization support
-📁 roles/                 - Custom role definitions per organization
-📁 user_role_assignments/ - Context-aware role assignments
+📁 roles/                 - Custom role definitions (NOT on the authorization path)
+📁 user_role_assignments/ - Role assignments (NOT on the authorization path)
 📁 invitations/           - Invitation system with workflow support
 📁 baby_profiles/         - Baby data with organization isolation
 ```
@@ -432,7 +440,7 @@ populateTemplate(template: InvitationTemplate, data: any): Promise<string>
 
 ### **Firebase Configuration**
 - Firestore security rules
-- Cloud Functions for server-side operations
+- Next.js API routes for privileged server-side operations (Admin SDK)
 - Real-time database synchronization
 - Automated backup and recovery
 
@@ -455,8 +463,11 @@ populateTemplate(template: InvitationTemplate, data: any): Promise<string>
 ### **External Services**
 - **Firebase Auth**: User authentication and session management
 - **Firestore**: Real-time database with security rules
-- **Cloud Functions**: Server-side user management operations
-- **SendGrid**: Email delivery for invitations (planned)
+- **Next.js API routes**: Server-side user management via the Firebase Admin SDK
+  (`src/app/api/**`). Cloud Functions are deliberately not used, which keeps the
+  project on Firebase's free Spark plan.
+- **No email provider.** Invitations are delivered as codes that a coach or admin
+  shares directly. This is a product decision, not a gap.
 
 ### **Internal Services**
 - **Baby Service**: Integration with baby profile management

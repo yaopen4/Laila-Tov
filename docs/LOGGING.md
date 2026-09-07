@@ -1,371 +1,103 @@
-# Laila Tov Logging System Documentation
+# Audit Logging
 
-## Overview
+**Last updated:** 2026-09-07
 
-The Laila Tov application implements a comprehensive logging and monitoring system designed to provide full visibility into application behavior, security events, and system performance. This system is built with production-ready features including structured logging, audit trails, error tracking, and performance monitoring.
+> This document previously described a broader logging system — application logs, a
+> `logs` collection, buffered flushes, performance metrics, and real-time alerting.
+> None of that exists. `LoggingService` was deleted (it had zero imports and wrote to
+> collections with no security rules), and the client-side audit calls were removed
+> because Firestore denied every one of them. What follows is what the code actually
+> does.
 
-## Architecture
+## The model
 
-### Core Components
+Audit entries are written **server-side only**, by the Admin SDK.
 
-1. ~~LoggingService (`src/services/loggingService.ts`)~~ [Deprecated]
-   - Deprecated in favor of dedicated `AuditLogger` usage patterns
-   - Keep for reference only; not used in current code
-   - Prefer `AuditLogger` and service-specific logging where needed
+`firestore.rules` denies every client write to `audit_logs` (`allow write: if false`).
+That is deliberate: an audit log the subject can write is not an audit log. The Admin
+SDK bypasses security rules, so the server is the only thing that can append to it.
 
-2. **AuditLogger** (`src/services/auditLogger.ts`)
-   - Comprehensive audit logging for security-sensitive operations
-   - Advanced filtering and search capabilities
-   - Compliance reporting and data export
-   - Real-time security monitoring and alerting
-   - Multi-collection storage based on data sensitivity
+| Concern | Where |
+|---|---|
+| Writing entries | `src/lib/server/audit.ts` — `auditLog()` |
+| Reading entries | `src/services/auditLogger.ts` — `searchAuditLogs()`, `generateComplianceReport()` |
+| Access control | `firestore.rules` — admins read, nobody writes from a client |
+| Event vocabulary | `src/types/auth.ts` — the `AuditAction` union |
 
-3. **Audit Log Viewer** (`src/components/admin/audit-log-viewer.tsx`)
-   - Real-time audit log viewing and analysis
-   - Advanced filtering by category, severity, and date range
-   - Compliance report generation and export
-   - Security event monitoring
+## Writing an entry
 
-4. **Service Integration**
-   - **AuthService** - Authentication with comprehensive audit logging
-   - **BabyService** - Baby management with detailed change tracking
-   - **InvitationService** - Invitation system with full audit trails
-   - **RoleService** - Role management with permission change logging
+Only from a server context — an API route under `src/app/api/**`:
 
-5. **Security Rules** (`firestore.rules`)
-   - Secure access to log collections with organization-based isolation
-   - Admin-only read access to audit logs
-   - Separate collections for different sensitivity levels
-   - Immutable log storage with write restrictions
+```ts
+import { auditLog, requestContext } from '@/lib/server/audit';
 
-## Log Types
-
-### 1. Application Logs (`logs` collection)
-
-Standard application logs with the following levels:
-- **DEBUG**: Development information
-- **INFO**: General information 
-- **WARN**: Warning conditions
-- **ERROR**: Error conditions
-- **CRITICAL**: Critical system failures
-
-### 2. Audit Logs (Multiple Collections)
-
-Security-focused logs for sensitive operations stored in separate collections based on sensitivity:
-
-**Standard Audit Logs** (`audit_logs` collection):
-- User management (creation, updates, role changes)
-- Baby management (creation, updates, archiving)
-- Sleep data operations (create, update, delete)
-- Invitation management
-- Data access and modifications
-
-**Security Audit Logs** (`audit_logs_security` collection):
-- Authentication events (login, logout, registration)
-- Security events (unauthorized access, permission denied)
-- Suspicious activity detection
-- Failed login attempts and brute force protection
-
-**Compliance Audit Logs** (`audit_logs_compliance` collection):
-- High-severity administrative actions
-- Data export and bulk operations
-- System configuration changes
-- Compliance-related events
-
-### 3. Performance Metrics
-
-Embedded within application logs with performance category:
-- Operation timing and duration
-- Slow operation alerts (>5 seconds)
-- Resource usage patterns
-
-## Usage
-
-### Basic Logging
-
-Use `AuditLogger` for structured logging of significant events. For incidental console logs in development, use `console.log` minimally.
-
-### Performance Monitoring
-
-Wrap critical operations with timestamps and include durations in `AuditLogger` details if needed. A dedicated performance wrapper may be reintroduced later if required.
-
-### Audit Logging
-
-```typescript
-import { AuditLogger } from '@/services/auditLogger';
-
-// Log user session activity
-await AuditLogger.logSession({
-  userId: 'user123',
-  action: 'login',
-  ipAddress: '192.168.1.1',
-  userAgent: 'Mozilla/5.0...',
-  loginMethod: 'email',
-  success: true
-});
-
-// Log data access events
-await AuditLogger.logDataAccess({
-  userId: 'user123',
-  targetType: 'baby_profile',
-  targetId: 'baby456',
-  action: 'read',
-  dataScope: 'last_30_days',
-  recordCount: 25
-});
-
-// Log data modifications with before/after values
-await AuditLogger.logDataModification({
-  userId: 'user123',
-  action: 'baby_profile_updated',
-  targetType: 'baby_profile',
-  targetId: 'baby456',
-  previousValues: { name: 'Old Name', age: 6 },
-  newValues: { name: 'New Name', age: 7 },
-  changeReason: 'Parent requested name change'
+await auditLog({
+  action: 'invitation_created',
+  userId: user.uid,
+  organizationId: user.organizationId,
+  targetType: 'invitation',
+  targetId: invitation.id,
+  success: true,
+  details: { email, role },
+  ...requestContext(req),   // client IP and user-agent
 });
 ```
 
-## Event Categories
+Two behaviours worth knowing:
 
-- **AUTHENTICATION**: Login, logout, registration events
-- **USER_MANAGEMENT**: User creation, updates, role changes
-- **BABY_MANAGEMENT**: Baby profile operations
-- **SLEEP_DATA**: Sleep record operations
-- **INVITATION**: Invitation system events
-- **SYSTEM**: System-level events and errors
-- **SECURITY**: Security-related events
-- **PERFORMANCE**: Performance metrics and monitoring
+- **Failures never propagate.** `auditLog` catches and logs its own errors rather than
+  rethrowing. A broken audit write must not fail the operation being audited.
+- **`undefined` fields are stripped.** Firestore rejects `undefined` outright, which
+  previously caused audit writes to fail on optional fields.
 
-## Audit Event Types
+## What is currently audited
 
-### Authentication Events
-- `user_login` / `user_login_failed` / `user_logout`
-- `user_registered` / `password_changed`
-- `password_reset_requested` / `password_reset_completed`
+Operations that go through an API route:
 
-### User Management Events
-- `user_registered` / `user_deactivated`
-- `role_assigned` / `role_unassigned`
-- `permission_granted` / `permission_revoked`
+| Action | Route |
+|---|---|
+| `user_registered` | `POST /api/auth/register` |
+| `invitation_created` | `POST /api/invitations` |
+| `invitation_cancelled` | `POST /api/invitations/{id}/cancel` |
+| `baby_profile_created` | `POST /api/babies` |
+| `system_bootstrapped` | `POST /api/admin/bootstrap` |
 
-### Baby Management Events
-- `baby_profile_created` / `baby_profile_updated` / `baby_profile_archived`
-- `baby_profile_transferred` / `baby_profile_restored`
-- `parent_added_to_baby` / `parent_removed_from_baby`
+## Known gap
 
-### Sleep Data Events
-- `sleep_log_created` / `sleep_log_updated` / `sleep_log_deleted`
-- `sleep_data_exported` / `sleep_data_imported`
+Operations still performed client-side — baby profile edits, archive and restore, and
+all sleep-record writes — go straight from the browser to Firestore and therefore
+produce **no audit entry**. The admin audit viewer shows an incomplete picture.
 
-### Invitation Events
-- `invitation_created` / `invitation_sent` / `invitation_accepted`
-- `invitation_expired` / `invitation_cancelled` / `invitation_resent`
+Closing it means routing those mutations through API routes, the way baby *creation*
+already is. Tracked as a GitHub issue.
 
-### Security Events
-- `unauthorized_access_attempt` / `suspicious_activity_blocked`
-- `security_incident_detected` / `bulk_data_operation`
-- `sensitive_data_viewed`
+## Reading entries
 
-### System Admin Events
-- `organization_settings_updated` / `role_created` / `role_updated`
-- `system_backup_created` / `data_migration_started`
-- `report_generated` / `report_exported`
+`AuditLogger.searchAuditLogs()` supports filtering by user, action, category,
+severity, target and date range, with pagination. Admin-only, enforced by the rules.
 
-## Configuration
+`AuditLogger.generateComplianceReport()` aggregates entries into a downloadable
+report. It does **not** persist the report: `compliance_reports` is client-write-denied
+like the audit collections, so the previous `setDoc` always failed. Persisting reports
+would need a server route, and nothing currently reads stored reports back.
 
-### Environment Variables
+## Collections
 
-No additional environment variables are required. The logging system uses the existing Firebase configuration.
+| Collection | Written by | Read by |
+|---|---|---|
+| `audit_logs` | server (`auditLog`) | admins |
+| `audit_logs_security` | nothing | admins |
+| `audit_logs_compliance` | nothing | admins |
+| `compliance_reports` | nothing | admins |
 
-### Buffer Settings
+The three unwritten collections remain declared in `firestore.rules` from the earlier
+design. They are harmless but currently dead — if severity-based routing is not going
+to be built, they should be removed along with their rules blocks.
 
-- **Buffer Size**: 100 logs before auto-flush
-- **Flush Interval**: 30 seconds
-- **Performance Alert Threshold**: 5 seconds
+## Adding a new action
 
-### Log Retention
-
-Logs are stored in Firestore with no automatic expiration. For production, consider implementing log rotation or archival policies based on your requirements.
-
-## Security Considerations
-
-1. **Access Control**: Only admins can read logs via Firestore security rules with organization-based isolation
-2. **Data Sanitization**: Sensitive data is automatically masked in logs
-3. **Immutable Storage**: Logs cannot be modified or deleted once created
-4. **Encryption**: All logs are encrypted at rest in Firestore
-5. **Collection Separation**: Different sensitivity levels stored in separate collections
-6. **Real-time Monitoring**: Automatic security alert detection and response
-7. **IP-based Protection**: Brute force detection and automatic IP blocking
-
-## Monitoring and Alerting
-
-### Real-time Monitoring
-
-The audit log viewer provides:
-- Live audit log streaming with real-time updates
-- Advanced filtering by category, severity, and date range
-- Security event monitoring and alerting
-- Performance metrics and system health indicators
-
-### Alerting Triggers
-
-- Critical security events (unauthorized access, privilege escalation)
-- Failed login attempts (brute force detection after 5 attempts in 15 minutes)
-- Suspicious data access patterns (rapid successive access, large data exports)
-- Performance degradation (operations >5s)
-- High error rates (>10 errors in recent logs)
-- Bulk data operations and sensitive data access
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Logs not appearing**: Check Firestore security rules and user permissions
-2. **Performance issues**: Verify buffer settings and flush intervals
-3. **Missing audit logs**: Ensure audit logging is called after successful operations
-
-### Debug Mode
-
-In development, logs are also output to the browser console for immediate debugging.
-
-### Log Export
-
-Admins can export audit logs via the audit log viewer for external analysis or compliance requirements. The system supports:
-- CSV export of filtered audit logs
-- Compliance report generation with summary statistics
-- Date range filtering for specific reporting periods
-- Organization-specific data isolation
-
-## Best Practices
-
-1. **Structured Data**: Always include relevant metadata in log entries
-2. **Error Context**: Provide sufficient context for debugging errors
-3. **Performance Logging**: Wrap slow operations with performance monitoring
-4. **Security Events**: Log all security-sensitive operations
-5. **Data Privacy**: Avoid logging sensitive user data directly
-
-## Integration Examples
-
-### Service Integration
-
-```typescript
-// In BabyService
-export class BabyService {
-  async createBaby(babyData: CreateBabyParams): Promise<BabyProfile> {
-    return withPerformanceLogging('createBaby', async () => {
-      try {
-        await logger.info('Starting baby creation', EventCategory.BABY_MANAGEMENT, {
-          coachId: babyData.assignedCoachId,
-          hasParentEmail: !!babyData.parentEmail
-        });
-
-        const result = await this.createBabyInFirestore(babyData);
-
-        // Enhanced audit logging with detailed context
-        await AuditLogger.log({
-          action: 'baby_profile_created',
-          userId: babyData.assignedCoachId,
-          targetType: 'baby_profile',
-          targetId: result.id,
-          details: {
-            name: babyData.name,
-            age: babyData.age,
-            parentEmail: babyData.parentEmail
-          },
-          success: true
-        });
-
-        return result;
-      } catch (error) {
-        await AuditLogger.log({
-          action: 'baby_profile_created',
-          userId: babyData.assignedCoachId,
-          success: false,
-          errorMessage: error instanceof Error ? error.message : 'Unknown error'
-        });
-        throw error;
-      }
-    });
-  }
-}
-```
-
-### Component Integration
-
-```typescript
-// In a React component with audit logging
-import { AuditLogger } from '@/services/auditLogger';
-
-function BabyManagementComponent() {
-  const handleBabyUpdate = async (babyId: string, updates: any) => {
-    try {
-      // Log data access
-      await AuditLogger.logDataAccess({
-        userId: currentUser.uid,
-        targetType: 'baby_profile',
-        targetId: babyId,
-        action: 'write',
-        dataScope: 'single_record'
-      });
-
-      // Perform update
-      await updateBaby(babyId, updates);
-
-      // Log successful modification
-      await AuditLogger.logDataModification({
-        userId: currentUser.uid,
-        action: 'baby_profile_updated',
-        targetType: 'baby_profile',
-        targetId: babyId,
-        previousValues: originalData,
-        newValues: updates,
-        changeReason: 'User initiated update'
-      });
-    } catch (error) {
-      // Log failed operation
-      await AuditLogger.log({
-        action: 'baby_profile_updated',
-        userId: currentUser.uid,
-        targetType: 'baby_profile',
-        targetId: babyId,
-        success: false,
-        errorMessage: error.message
-      });
-    }
-  };
-
-  return (
-    <div>
-      {/* Component content */}
-    </div>
-  );
-}
-```
-
-## Compliance and Auditing
-
-The logging system supports compliance requirements by:
-- Maintaining immutable audit trails with organization-based isolation
-- Logging all data access and modifications with detailed change tracking
-- Providing comprehensive user activity tracking with session management
-- Supporting data export for compliance reporting with summary statistics
-- Real-time security monitoring and automatic threat detection
-- Multi-level audit storage based on data sensitivity
-- IP-based access tracking and geographic location logging
-- Automatic compliance report generation with customizable date ranges
-
-## Performance Impact
-
-The logging system is designed for minimal performance impact:
-- Asynchronous logging operations with non-blocking execution
-- Intelligent buffering and batching with configurable flush intervals
-- Automatic retry logic for failed log writes with exponential backoff
-- Graceful degradation when logging fails (fallback to console)
-- Multi-collection storage optimization based on data sensitivity
-- Real-time security monitoring without performance overhead
-- Efficient querying with indexed fields for fast log retrieval
-
----
-
-For additional questions or support, please refer to the main project documentation or contact the development team.
+1. Add the action name to the `AuditAction` union in `src/types/auth.ts`.
+2. Map it to a category in `categorizeAction` in `src/services/auditLogger.ts` —
+   TypeScript enforces this: the map is typed `Record<AuditAction, AuditCategory>`, so
+   an unmapped action fails the build.
+3. Call `auditLog()` from the server route that performs the operation.
