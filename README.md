@@ -135,6 +135,13 @@ npm test            # starts emulators, runs the suite, shuts them down
 npm run build
 ```
 
+> **Stop the dev server before building.** `npm run dev` uses Turbopack and
+> `npm run build` uses Webpack, and both write to `.next`. Running them at the same
+> time leaves a mixed directory, and the resulting server starts fine but returns 500
+> on every route with *"Expected to use Webpack bindings ... referencing Turbopack
+> bindings"*. `npm run build` now clears `.next` first, so a stale mix is cleaned up
+> on the next build either way.
+
 The test suite covers the security rules (family isolation, cross-organization access,
 privilege escalation) and the API routes (registration, invitation lifecycle, baby
 creation). Rules tests matter most: rules are the real boundary, since anything in the

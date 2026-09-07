@@ -19,7 +19,7 @@ import { POST as createBabyRoute } from '../src/app/api/babies/route';
 import { POST as bootstrapRoute } from '../src/app/api/admin/bootstrap/route';
 
 const ORG = 'test-org';
-const PROJECT = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? 'demo-laila-tov';
+const PROJECT = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? 'demo-laila-tov-test';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? 'localhost:9099';
 
 /**
