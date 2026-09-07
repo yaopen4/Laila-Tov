@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { he } from 'date-fns/locale';
 import { CalendarIcon, PlusCircle, Send, Trash2, BedDouble, Timer, UserCircle2, Moon, Sunrise } from 'lucide-react';
-import type { SleepRecord, SleepRecordFormData } from "@/types";
+import type { SleepRecord, SleepRecordFormData } from "@/types/auth";
 import { useEffect } from "react";
 import { fromDateKey } from '@/services/babyService';
 

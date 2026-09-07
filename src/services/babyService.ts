@@ -15,11 +15,11 @@ import {
   arrayRemove
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { 
+import type {
   BabyProfile,
+  BabyFormData,
+  SleepRecord,
 } from '@/types/auth';
-import type { BabyFormData } from '@/types';
-import type { SleepRecord } from '@/types';
 import { AuthService } from './authService';
 import { RoleService } from './roleService';
 import { apiFetch } from '@/lib/apiClient';
