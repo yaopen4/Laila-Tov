@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "emulators": "node scripts/with-java.mjs firebase emulators:start --only auth,firestore --project demo-laila-tov",
     "seed": "tsx scripts/seed.ts",
-    "test": "node scripts/with-java.mjs firebase emulators:exec --only auth,firestore --project demo-laila-tov \"vitest run\"",
+    "test": "node scripts/with-java.mjs firebase emulators:exec --config firebase.test.json --project demo-laila-tov-test \"vitest run\"",
     "test:watch": "vitest",
     "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\""
   },
