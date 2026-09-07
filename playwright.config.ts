@@ -40,7 +40,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // Retry once everywhere. These drive a real browser against a real server and
+  // emulator, so a transient network suspension or a slow first compile can fail a
+  // run for reasons unrelated to the code. A retry cannot hide a deterministic
+  // assertion failure -- that fails again -- only genuinely flaky infrastructure.
+  retries: 1,
   reporter: process.env.CI ? [['github'], ['list']] : [['list']],
 
   use: {

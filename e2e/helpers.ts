@@ -34,7 +34,9 @@ export async function login(page: Page, email: string, password = PASSWORD): Pro
   await page.getByRole('button', { name: 'התחבר' }).click();
 
   // Landing anywhere other than '/' means auth resolved and the redirect ran.
-  await page.waitForURL((url) => !url.pathname.match(/^\/?$/), { timeout: 30_000 });
+  // Generous: sign-in round-trips to the Auth emulator, reads the user document,
+  // and then the destination route may still need compiling in dev mode.
+  await page.waitForURL((url) => !url.pathname.match(/^\/?$/), { timeout: 60_000 });
 }
 
 /** Sign out by clearing client auth state, so the next spec starts clean. */
