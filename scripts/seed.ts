@@ -175,6 +175,40 @@ async function main() {
     inviteCode: '',
   });
 
+  // A second baby for the same coach, deliberately with NO parents linked. The
+  // end-to-end tests use it to prove a parent cannot open another family's records,
+  // and it gives the coach dashboard more than one row to render.
+  const foreignBabyRef = db.collection('baby_profiles').doc('demo-baby-2');
+  const dob2 = new Date();
+  dob2.setMonth(dob2.getMonth() - 4);
+
+  await foreignBabyRef.set({
+    id: foreignBabyRef.id,
+    name: 'תמר',
+    dateOfBirth: Timestamp.fromDate(dob2),
+    organizationId: ORG_ID,
+    assignedCoachId: coachUid,
+    parentIds: [],
+    status: 'active',
+    createdAt: Timestamp.now(),
+    createdBy: coachUid,
+    lastUpdatedAt: Timestamp.now(),
+    settings: {
+      sleepGoals: { nightSleepHours: 11, dayNaps: 3, totalSleepHours: 14 },
+      trackingPreferences: { reminderTime: '19:30', autoArchiveAfterDays: 30 },
+    },
+    familyName: 'לוי',
+    age: 4,
+    motherName: 'שירה',
+    fatherName: 'איתי',
+    siblingsCount: 0,
+    description: 'מתעוררת הרבה בלילה',
+    isArchived: false,
+    dateArchived: null,
+    lastModified: new Date().toISOString(),
+    inviteCode: '',
+  });
+
   const parentUid = await upsertUser({
     email: 'parent@lailatov.test',
     displayName: 'מיכל כהן',

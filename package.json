@@ -14,7 +14,8 @@
     "seed": "tsx scripts/seed.ts",
     "test": "node scripts/with-java.mjs firebase emulators:exec --config firebase.test.json --project demo-laila-tov-test \"vitest run\"",
     "test:watch": "vitest",
-    "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\""
+    "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
+    "test:e2e": "node scripts/e2e.mjs"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",
@@ -66,6 +67,7 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

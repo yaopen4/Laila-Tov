@@ -48,3 +48,9 @@ firestore-debug.log
 
 # dev-mode build output (see distDir in next.config.ts)
 .next-dev/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
