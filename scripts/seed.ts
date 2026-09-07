@@ -239,10 +239,16 @@ async function main() {
   });
 
   console.log('Seed complete.\n');
-  console.log(`  Admin   admin@lailatov.test   / ${PASSWORD}`);
-  console.log(`  Coach   coach@lailatov.test   / ${PASSWORD}`);
-  console.log(`  Parent  parent@lailatov.test  / ${PASSWORD}`);
-  console.log('\n  Unused invite code: DEMO2468  (for newparent@lailatov.test, role: parent)');
+  console.log('  Sign in with any of these:\n');
+  console.log(`    Admin   admin@lailatov.test    / ${PASSWORD}`);
+  console.log(`    Coach   coach@lailatov.test    / ${PASSWORD}`);
+  console.log(`    Parent  parent@lailatov.test   / ${PASSWORD}`);
+  console.log('\n  To try the signup flow, open /signup and enter BOTH of these:\n');
+  console.log('    invite code:  DEMO2468');
+  console.log('    email:        newparent@lailatov.test   <-- must be exactly this');
+  console.log('\n  An invitation is bound to the address it was issued for, so signing up');
+  console.log('  with any other email is refused. That is deliberate: it stops a leaked');
+  console.log('  code being used to join another family.');
   console.log('\n  App: http://localhost:9002   Emulator UI: http://localhost:4000\n');
 }
 

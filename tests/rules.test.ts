@@ -40,11 +40,13 @@ const ctx = (u: { uid: string; claims: Record<string, string> }) =>
 
 beforeAll(async () => {
   testEnv = await initializeTestEnvironment({
-    projectId: 'demo-laila-tov',
+    // Set by tests/setup.ts -- deliberately NOT the project `npm run seed` fills.
+    projectId: process.env.FIREBASE_PROJECT_ID ?? 'demo-laila-tov-test',
     firestore: {
       rules: readFileSync('firestore.rules', 'utf8'),
       host: '127.0.0.1',
-      port: 8080,
+      // The dedicated test emulator (firebase.test.json), not the dev one on 8080.
+      port: Number(process.env.FIRESTORE_EMULATOR_HOST?.split(':')[1] ?? 8090),
     },
   });
 });
