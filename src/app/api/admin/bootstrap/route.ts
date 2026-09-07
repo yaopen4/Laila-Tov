@@ -5,6 +5,7 @@ import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
 import { ApiError, handleRoute, readJson, requireString } from '@/lib/apiAuth';
 import { getPermissionsForRole } from '@/lib/permissions';
 import { auditLog, requestContext } from '@/lib/server/audit';
+import { enforceRateLimit, LIMITS } from '@/lib/server/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +21,10 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    // Guarded by a shared secret, but a secret can be guessed if you may try
+    // endlessly. This runs once in a system's lifetime.
+    enforceRateLimit(req, LIMITS.bootstrap);
+
     const secret = process.env.ADMIN_BOOTSTRAP_SECRET;
 
     if (!secret || secret === 'change-me-to-a-long-random-string') {
