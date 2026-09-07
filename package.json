@@ -13,7 +13,8 @@
     "emulators": "node scripts/with-java.mjs firebase emulators:start --only auth,firestore --project demo-laila-tov",
     "seed": "tsx scripts/seed.ts",
     "test": "node scripts/with-java.mjs firebase emulators:exec --only auth,firestore --project demo-laila-tov \"vitest run\"",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",
