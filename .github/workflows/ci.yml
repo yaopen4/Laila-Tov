@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# A newer push supersedes an in-flight run on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # src/lib/firebase.ts throws at import time when these are absent, so `next build`
+  # fails without them. These are the emulator placeholders from .env.example — a
+  # Firebase web API key identifies a project, it does not authenticate, and this one
+  # names a `demo-` project that cannot exist. Nothing secret here.
+  NEXT_PUBLIC_USE_EMULATORS: 'true'
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: demo-laila-tov
+  NEXT_PUBLIC_FIREBASE_API_KEY: demo-api-key
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: demo-laila-tov.firebaseapp.com
+  NEXT_PUBLIC_APP_URL: http://localhost:9002
+
+jobs:
+  checks:
+    name: Typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The Firestore emulator needs a JDK 21+. scripts/with-java.mjs would find one
+      # anyway, but installing it here means it resolves the default `java` and skips
+      # the search entirely.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Starts its own emulator on 8090/9089 and tears it down afterwards.
+      - name: Unit and rules tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      # --with-deps installs the system libraries headless Chromium needs on Ubuntu.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      # Traces, screenshots and video for anything that failed — the only practical
+      # way to diagnose a browser failure that did not reproduce locally.
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
