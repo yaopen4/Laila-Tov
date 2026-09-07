@@ -131,9 +131,14 @@ project.
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # starts emulators, runs the suite, shuts them down
+npm test            # unit + security-rules tests, in their own emulator
+npm run test:e2e    # browser tests, in their own emulator and app instance
 npm run build
 ```
+
+Both test commands start and stop the emulator they need, on ports separate from the
+development one — so they can run while `npm run dev` is up, and cannot touch the data
+`npm run seed` created.
 
 > **Stop the dev server before building.** `npm run dev` uses Turbopack and
 > `npm run build` uses Webpack, and both write to `.next`. Running them at the same
@@ -142,10 +147,16 @@ npm run build
 > bindings"*. `npm run build` now clears `.next` first, so a stale mix is cleaned up
 > on the next build either way.
 
-The test suite covers the security rules (family isolation, cross-organization access,
+The unit suite covers the security rules (family isolation, cross-organization access,
 privilege escalation) and the API routes (registration, invitation lifecycle, baby
 creation). Rules tests matter most: rules are the real boundary, since anything in the
 client can be bypassed by talking to Firestore directly.
+
+The browser suite (`e2e/`) drives the real UI in Chromium: sign-in for each role,
+invitation redemption, baby creation, sleep logging and family isolation. Several specs
+exist to catch regressions this project has already had — the sleep-logging spec
+reloads the page before asserting, because the date bug it guards only appeared after a
+reload.
 
 ---
 

@@ -17,6 +17,7 @@ import { GET as listInvitationsRoute, POST as createInvitationRoute } from '../s
 import { POST as cancelInvitationRoute } from '../src/app/api/invitations/[id]/cancel/route';
 import { POST as createBabyRoute } from '../src/app/api/babies/route';
 import { POST as bootstrapRoute } from '../src/app/api/admin/bootstrap/route';
+import { __resetRateLimits, LIMITS } from '../src/lib/server/rateLimit';
 
 const ORG = 'test-org';
 const PROJECT = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? 'demo-laila-tov-test';
@@ -98,6 +99,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  __resetRateLimits();
   await clearEmulator();
   adminToken = await makeUser(ADMIN_UID, 'admin', 'admin@test.com');
   coachToken = await makeUser(COACH_UID, 'coach', 'coach@test.com');
@@ -459,5 +461,49 @@ describe('bootstrap', () => {
       post('http://localhost/api/admin/bootstrap', { ...body, email: 'second@test.com' })
     );
     expect(second.status).toBe(409);
+  });
+});
+
+describe('rate limiting', () => {
+  it('refuses further validation attempts once the budget is spent', async () => {
+    const url = 'http://localhost/api/invitations/validate?code=NOSUCH12';
+
+    // Spend the whole budget. These are legitimate-shaped requests; only the rate
+    // should stop them.
+    for (let i = 0; i < LIMITS.validateInvitation.limit; i++) {
+      const ok = await validateRoute(get(url));
+      expect(ok.status).toBe(200);
+    }
+
+    const blocked = await validateRoute(get(url));
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toContain('יותר מדי בקשות');
+  });
+
+  it('counts each client IP separately', async () => {
+    const url = 'http://localhost/api/invitations/validate?code=NOSUCH12';
+    const from = (ip: string) => new Request(url, { headers: { 'x-forwarded-for': ip } });
+
+    for (let i = 0; i < LIMITS.validateInvitation.limit; i++) {
+      await validateRoute(from('203.0.113.1'));
+    }
+    expect((await validateRoute(from('203.0.113.1'))).status).toBe(429);
+
+    // A different caller is unaffected by the first one's spending.
+    expect((await validateRoute(from('203.0.113.2'))).status).toBe(200);
+  });
+
+  it('limits registration attempts', async () => {
+    const body = {
+      email: 'ratelimit@test.com', password: 'Password123!',
+      displayName: 'RL', invitationCode: 'BADCODE1',
+    };
+
+    for (let i = 0; i < LIMITS.register.limit; i++) {
+      const res = await registerRoute(post('http://localhost/api/auth/register', body));
+      expect(res.status).toBe(400);   // bad code, but not rate limited yet
+    }
+
+    expect((await registerRoute(post('http://localhost/api/auth/register', body))).status).toBe(429);
   });
 });

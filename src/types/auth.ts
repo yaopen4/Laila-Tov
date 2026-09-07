@@ -1,6 +1,5 @@
 // User Management Types for Advanced RBAC System
 import type { Timestamp } from 'firebase/firestore';
-import type { SleepRecord } from './index';
 
 // ============== PERMISSION SYSTEM ==============
 
@@ -385,3 +384,64 @@ export interface ComplianceReport {
   data: any[];
 }
 
+// ============== SLEEP DATA ==============
+// Moved here from types/index.ts, which held a second `User` interface that nothing
+// imported any more. One file, one User.
+
+/**
+ * A single sleep cycle within a night's record.
+ */
+export interface SleepCycle {
+  id: string;
+  /** Time the baby was put to bed, HH:MM. */
+  bedtime: string;
+  /** How long it took to fall asleep, free text (e.g. "15 דקות", "מייד"). */
+  timeToSleep: string;
+  /** Who settled the baby (e.g. "אמא", "אבא", "לבד"). */
+  whoPutToSleep: string;
+  /** How the baby fell asleep. */
+  howFellAsleep: string;
+  /** Time the baby woke, HH:MM. */
+  wakeTime?: string;
+}
+
+/**
+ * One day's sleep cycles.
+ */
+export interface SleepRecord {
+  id: string;
+  /**
+   * Calendar date as 'YYYY-MM-DD'.
+   *
+   * A string, deliberately. Storing a Date here means Firestore persists a Timestamp,
+   * and reading it back with new Date(...) yields Invalid Date -- which crashed the
+   * parent page with "RangeError: Invalid time value". Normalise through
+   * `toDateKey` / `fromDateKey` in babyService.
+   */
+  date: string;
+  sleepCycles: SleepCycle[];
+  timestamp?: Timestamp;
+}
+
+/** Shape the sleep-record form produces. `date` is a Date here; the service converts it. */
+export type SleepRecordFormData = {
+  date: Date;
+  sleepCycles: Array<Omit<SleepCycle, 'id'> & { id?: string }>;
+};
+
+/** Shape the add/edit baby form produces. */
+export type BabyFormData = {
+  name: string;
+  familyName: string;
+  age: number;
+  motherName: string;
+  fatherName: string;
+  siblingsCount: number;
+  siblingsNames?: string;
+  description?: string;
+  coachNotes?: string;
+  parentEmail1?: string;
+  parentEmail2?: string;
+  inviteCode?: string;
+  parentUsername?: string;
+};

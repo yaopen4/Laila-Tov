@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardDescription, CardFooter } from "@/components/ui/card";
 import AppLogo from "@/components/shared/app-logo";
 import { useToast } from "@/hooks/use-toast";
@@ -182,15 +183,28 @@ const SignUpForm: FC = () => {
                 onBlur={handleInviteBlur}
                 required
               />
-              {inviteStatus.state === 'validating' && (
-                <p className="text-xs text-muted-foreground">בודק את הקוד…</p>
-              )}
-              {inviteStatus.state === 'valid' && (
-                <p className="text-xs text-emerald-600">קוד הזמנה תקין ✔</p>
-              )}
-              {inviteStatus.state === 'invalid' && (
-                <p className="text-xs text-destructive">{inviteStatus.message || 'קוד הזמנה לא תקין'}</p>
-              )}
+              {/*
+                Always rendered, with reserved height, even when idle.
+                Blurring this field starts an async validation, and this message sits
+                directly above the submit button. Rendering it conditionally made the
+                button move the instant the user clicked it -- the blur fired, the line
+                appeared, the button shifted down, and the click landed above it. The
+                form simply did nothing, with no error, and the user had to click twice.
+              */}
+              <p
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  'text-xs min-h-4',
+                  inviteStatus.state === 'valid' && 'text-emerald-600',
+                  inviteStatus.state === 'invalid' && 'text-destructive',
+                  inviteStatus.state !== 'valid' && inviteStatus.state !== 'invalid' && 'text-muted-foreground'
+                )}
+              >
+                {inviteStatus.state === 'validating' && 'בודק את הקוד…'}
+                {inviteStatus.state === 'valid' && 'קוד הזמנה תקין ✔'}
+                {inviteStatus.state === 'invalid' && (inviteStatus.message || 'קוד הזמנה לא תקין')}
+              </p>
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "יוצר חשבון..." : "הירשם והתחבר"}
