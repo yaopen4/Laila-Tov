@@ -83,6 +83,7 @@ export class AuthService {
 
       // Sign in to pick up an ID token containing the new claims.
       const credential = await signInWithEmailAndPassword(firebaseAuthInstance, email, password);
+      this.clearUserCache();
       await this.establishSession(credential.user);
       const enhancedUser = await this.getEnhancedUserData(credential.user.uid);
 
@@ -120,6 +121,7 @@ export class AuthService {
         password
       );
       const firebaseUser = userCredential.user;
+      this.clearUserCache();
 
       // Get enhanced user data
       const enhancedUser = await this.getEnhancedUserData(firebaseUser.uid);
@@ -158,6 +160,7 @@ export class AuthService {
       // expires on its own, so it must not block signing out locally.
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => undefined);
       await firebaseSignOut(firebaseAuthInstance);
+      this.clearUserCache();
     } catch (error) {
       console.error('Logout failed:', error);
       throw error;
@@ -221,31 +224,62 @@ export class AuthService {
   }
 
   /**
+   * The resolved current user, shared by every caller (#9).
+   *
+   * getCurrentUser() is called from ~40 places, often several times per screen. Each
+   * call used to attach a listener and re-read /users/{uid}; over a real network that
+   * is a round trip apiece. Now concurrent and repeat calls share one in-flight read.
+   *
+   * Invalidated whenever the signed-in uid changes, on sign-out, and after CACHE_TTL_MS
+   * so that a role or status change made by an admin is picked up without a reload.
+   */
+  private static readonly CACHE_TTL_MS = 60_000;
+  private static userCache: {
+    uid: string;
+    expiresAt: number;
+    promise: Promise<AuthUser | null>;
+  } | null = null;
+
+  static clearUserCache(): void {
+    this.userCache = null;
+  }
+
+  /**
    * Get current authenticated user with enhanced data
    */
   static async getCurrentUser(): Promise<AuthUser | null> {
-    return new Promise((resolve) => {
-      const unsubscribe = firebaseOnAuthStateChanged(firebaseAuthInstance, async (firebaseUser) => {
-        unsubscribe();
-        
-        if (firebaseUser) {
-          try {
-            const enhancedUser = await this.getEnhancedUserData(firebaseUser.uid);
-            
-            if (enhancedUser) {
-              resolve(this.convertToAuthUser(firebaseUser, enhancedUser));
-            } else {
-              resolve(null);
-            }
-          } catch (error) {
-            console.error('Error getting current user:', error);
-            resolve(null);
-          }
-        } else {
-          resolve(null);
-        }
+    await firebaseAuthInstance.authStateReady();
+    const firebaseUser = firebaseAuthInstance.currentUser;
+    if (!firebaseUser) {
+      this.userCache = null;
+      return null;
+    }
+
+    const cached = this.userCache;
+    if (cached && cached.uid === firebaseUser.uid && cached.expiresAt > Date.now()) {
+      return cached.promise;
+    }
+
+    const promise = this.getEnhancedUserData(firebaseUser.uid)
+      .then((enhancedUser) =>
+        enhancedUser ? this.convertToAuthUser(firebaseUser, enhancedUser) : null
+      )
+      .catch((error) => {
+        console.error('Error getting current user:', error);
+        return null;
+      })
+      .then((user) => {
+        // Never cache a miss: it may be transient (offline, rules not yet deployed).
+        if (!user && this.userCache?.promise === promise) this.userCache = null;
+        return user;
       });
-    });
+
+    this.userCache = {
+      uid: firebaseUser.uid,
+      expiresAt: Date.now() + this.CACHE_TTL_MS,
+      promise,
+    };
+    return promise;
   }
 
   /**
@@ -422,3 +456,13 @@ export class AuthService {
   }
 }
 
+// Drop the cached user whenever the signed-in account changes (sign-in, sign-out,
+// a token for a different uid), so no screen can be served the previous user.
+if (typeof window !== 'undefined') {
+  let lastUid: string | null | undefined;
+  firebaseOnAuthStateChanged(firebaseAuthInstance, (user) => {
+    const uid = user?.uid ?? null;
+    if (lastUid !== undefined && uid !== lastUid) AuthService.clearUserCache();
+    lastUid = uid;
+  });
+}
