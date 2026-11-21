@@ -110,7 +110,7 @@ directly. There is no email provider and nothing to configure.
 
 ## Getting started
 
-Requirements: Node 20+, and a JDK 21+ for the Firestore emulator (`npm run emulators`
+Requirements: Node 22+ (firebase-admin requires it), and a JDK 21+ for the Firestore emulator (`npm run emulators`
 finds a suitable JDK automatically and will tell you how to install one if there is none).
 
 ```bash
