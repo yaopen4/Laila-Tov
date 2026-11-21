@@ -57,3 +57,6 @@ firestore-debug.log
 
 # netlify
 .netlify/
+
+# Firestore exports (contain family data)
+/backups/

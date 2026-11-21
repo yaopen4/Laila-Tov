@@ -52,7 +52,8 @@ Two behaviours worth knowing:
 
 ## What is currently audited
 
-Operations that go through an API route:
+Every write to family data goes through an API route, and `firestore.rules` denies those
+writes to clients, so the trail cannot be bypassed:
 
 | Action | Route |
 |---|---|
@@ -60,16 +61,14 @@ Operations that go through an API route:
 | `invitation_created` | `POST /api/invitations` |
 | `invitation_cancelled` | `POST /api/invitations/{id}/cancel` |
 | `baby_profile_created` | `POST /api/babies` |
+| `baby_profile_updated` | `PATCH /api/babies/{id}` (field names only, never values) |
+| `baby_profile_archived` / `baby_profile_restored` | `POST /api/babies/{id}/archive` |
+| `baby_profile_deleted` | `DELETE /api/babies/{id}` |
+| `sleep_record_created` / `_updated` / `_deleted` | `/api/babies/{id}/sleep-records[/{rid}]` |
 | `system_bootstrapped` | `POST /api/admin/bootstrap` |
 
-## Known gap
-
-Operations still performed client-side — baby profile edits, archive and restore, and
-all sleep-record writes — go straight from the browser to Firestore and therefore
-produce **no audit entry**. The admin audit viewer shows an incomplete picture.
-
-Closing it means routing those mutations through API routes, the way baby *creation*
-already is. Tracked as a GitHub issue.
+Not audited: a user editing their own profile document (display name, preferences),
+which the rules allow directly and which carries no authorization.
 
 ## Reading entries
 

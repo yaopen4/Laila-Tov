@@ -1,6 +1,6 @@
 # Integration Status
 
-**Last updated:** 2026-09-06
+**Last updated:** 2026-11-21
 
 > The previous version of this document reported "29/29 components, 100% integrated" for a
 > system in which no account could complete signup. It measured whether a component
@@ -32,26 +32,22 @@
 | Organization isolation, admins included | `tests/rules.test.ts` |
 | Users cannot escalate their own role or permissions | `tests/rules.test.ts` |
 | Clients cannot create users or forge audit logs | `tests/rules.test.ts` |
+| Baby edits, archive/restore, delete and sleep-record writes are server-only and audited | `tests/api.test.ts`, `tests/rules.test.ts` |
+| Admins read only their own organization's audit logs | `tests/rules.test.ts` |
+| Protected pages redirect before rendering without a valid session cookie | `tests/session.test.ts`, `e2e/route-protection.spec.ts` |
+| Rate limiting on the unauthenticated endpoints | `tests/api.test.ts` |
+| Every role's main screens, signup, sleep logging (in a real browser, dev and production builds) | `e2e/*.spec.ts` |
+| Security headers, not-found page, health check | `e2e/route-protection.spec.ts` |
 
 ## Known gaps
 
-These are real and currently unaddressed. None of them block the core flows.
-
-- **No route-level auth on the server.** `admin/layout.tsx` and `coach/layout.tsx` check
-  the role on the client, so an unauthorized user briefly loads the page shell before
-  being redirected. The data behind it is protected by Firestore rules, so this is a
-  polish issue rather than an exposure. Next.js middleware would close it.
-- **No auth context provider.** Every component calls `AuthService.getCurrentUser()`
-  independently, and each call attaches a fresh `onAuthStateChanged` listener and re-reads
-  the user document. Works, but re-fetches far more than it needs to.
-- **Client-side audit calls are inert.** `AuditLogger` still runs in some client paths;
-  `audit_logs` is client-write-denied by design, and those writes are swallowed. Real
-  audit entries come from the server (`src/lib/server/audit.ts`). The remaining client
-  calls should be removed rather than left looking functional.
-- **Placeholder screens.** `/coach/calendar`, `/coach/reports` and `/coach/settings` are
-  static shells. `/admin/roles` lists system roles but its create/edit/delete buttons are
-  toast-only no-ops — custom roles are not on the authorization path, so nothing depends
-  on them.
-- **No rate limiting** on `/api/invitations/validate` or `/api/auth/register`.
-- **Email templates are stored but unused.** Nothing sends email; invitation codes are
-  shared manually. `/admin/email-templates` works as a content editor only.
+- **Never run against a real Firebase project** (issue #14). Everything above runs
+  against the emulators, which do not enforce composite indexes or real credentials.
+  `firestore.indexes.json` was audited against every compound query in `src/`, and
+  `GET /api/health` checks credentials on a live deploy, but the first production deploy
+  is still the first real test.
+- **Placeholder screens** (`/coach/calendar`, `/coach/reports`, `/coach/settings`,
+  `/admin/settings`, `/admin/roles` create/edit/delete) remain, by product decision
+  (issues #5–#7 closed as won't-fix).
+- **Email templates are stored but unused.** Invitation codes are shared manually.
+- **Rate limits are per instance**, not distributed.

@@ -15,7 +15,8 @@
     "test": "node scripts/with-java.mjs firebase emulators:exec --config firebase.test.json --project demo-laila-tov-test \"vitest run\"",
     "test:watch": "vitest",
     "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
-    "test:e2e": "node scripts/e2e.mjs"
+    "test:e2e": "node scripts/e2e.mjs",
+    "backup": "tsx scripts/backup.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",

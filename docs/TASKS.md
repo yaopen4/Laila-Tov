@@ -3,7 +3,7 @@
 Comprehensive task tracking for the development and enhancement of the Laila Tov baby sleep tracking platform. 
 This document consolidates requirements from the PRD and features documentation into actionable development tasks.
 
-**Last Updated:** September 6, 2026  
+**Last Updated:** November 21, 2026  
 **Project Status:** Core flows working and covered by tests; see `docs/Integration Status Dashboard.md` for what is and is not done.
 
 > Note: this file previously described the project as "production-ready" while signup
@@ -65,7 +65,9 @@ This document consolidates requirements from the PRD and features documentation 
 ## Backend & Database Tasks
 
 ### Data Management
-- [ ] **Implement data backup and recovery system** PRIORITY: LOW
+- [~] **Implement data backup and recovery system** PRIORITY: LOW
+  - Done: `npm run backup` exports all of Firestore to JSON (Spark has no managed
+    backups). Still to do: a restore script, and scheduling the export.
   - Set up automated Firestore backups
   - Create data export/import utilities
   - Test recovery procedures
@@ -144,7 +146,8 @@ This document consolidates requirements from the PRD and features documentation 
 ## New Feature Development
 
 ### Phase 2 Features
-- [ ] **Implement recovery mechanism** 
+- [~] **Implement recovery mechanism** 
+  - Done: password reset ("שכחת סיסמה?" on the login page, Firebase email).
   - Password reset functionality
   - Account recovery options
   - Data recovery capabilities
@@ -192,12 +195,15 @@ This document consolidates requirements from the PRD and features documentation 
 ## Infrastructure & DevOps Tasks
 
 ### Development Environment
-- [~] **Testing suite** — started
+- [x] **Testing suite** ✅
+  - 88 unit/rules/API tests and 32 Playwright specs, run against dev and production builds.
   - Security rules and API route tests run against the Firebase emulators (`npm test`).
   - Still missing: component tests and a browser-level end-to-end pass.
   - Files: `tests/rules.test.ts`, `tests/api.test.ts`, `vitest.config.mts`
 
-- [ ] **Set up CI/CD pipeline** PRIORITY: LOW
+- [x] **Set up CI/CD pipeline** ✅
+  - GitHub Actions runs typecheck, unit/rules tests, build and the browser suite on
+    every PR (`.github/workflows/ci.yml`); Netlify builds deploy previews and production.
   - Automated testing on commits
   - Automated deployment to staging
   - Production deployment automation
