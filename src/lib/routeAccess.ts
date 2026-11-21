@@ -12,3 +12,29 @@ export function rolesForPath(pathname: string): SessionRole[] | null {
   if (pathname.startsWith('/parent/')) return ['parent', 'coach', 'admin'];
   return null;
 }
+
+/**
+ * Where to send someone after they sign in, given the `?next=` middleware added.
+ *
+ * Resolves the candidate with the URL parser FIRST and checks the resulting origin,
+ * then returns the parsed path, never the raw string. String checks alone are not
+ * enough: the URL parser strips tabs and newlines, so "/\t/evil.com" passes a
+ * startsWith('/') && !startsWith('//') test yet resolves to https://evil.com.
+ */
+export function safeNextPath(
+  next: string | null,
+  origin: string,
+  role: SessionRole,
+  fallback: string
+): string {
+  if (!next) return fallback;
+  let url: URL;
+  try {
+    url = new URL(next, origin);
+  } catch {
+    return fallback;
+  }
+  if (url.origin !== origin) return fallback;
+  if (!rolesForPath(url.pathname)?.includes(role)) return fallback;
+  return `${url.pathname}${url.search}${url.hash}`;
+}

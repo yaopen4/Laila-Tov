@@ -3,7 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebaseAdmin';
 import { handleRoute, readJson, requireAuth } from '@/lib/apiAuth';
-import { auditLog, requestContext } from '@/lib/server/audit';
+import { auditInBatch, auditLog, requestContext } from '@/lib/server/audit';
 import { cleanProfileUpdate, loadBabyForWrite, touched } from '@/lib/server/babies';
 
 export const runtime = 'nodejs';
@@ -18,9 +18,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const { ref } = await loadBabyForWrite(user, id, { allowParent: false });
 
     const update = cleanProfileUpdate(await readJson(req));
-    await ref.update({ ...update, ...touched() });
-
-    await auditLog({
+    const batch = adminDb.batch();
+    batch.update(ref, { ...update, ...touched() });
+    auditInBatch(batch, {
       action: 'baby_profile_updated',
       userId: user.uid,
       organizationId: user.organizationId,
@@ -31,6 +31,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       details: { fields: Object.keys(update).filter((f) => f !== 'dateOfBirth') },
       ...requestContext(req),
     });
+    await batch.commit();
 
     return NextResponse.json({ ok: true });
   });
@@ -48,21 +49,8 @@ export async function DELETE(req: Request, ctx: Ctx) {
     const { id } = await ctx.params;
     const { ref, baby } = await loadBabyForWrite(user, id, { allowParent: false });
 
-    await adminDb.recursiveDelete(ref);
-
-    // Keep the coach's and parents' back-references consistent.
-    const batch = adminDb.batch();
-    for (const uid of [baby.assignedCoachId, ...(baby.parentIds ?? [])].filter(Boolean)) {
-      batch.set(
-        adminDb.collection('users').doc(uid),
-        { managedBabyProfiles: FieldValue.arrayRemove(id) },
-        { merge: true }
-      );
-    }
-    await batch.commit().catch((error) => {
-      console.error('[babies] Deleted profile but failed to update back-references:', error);
-    });
-
+    // recursiveDelete cannot join a batch, so record the intent first: an entry for a
+    // delete that then fails is recoverable; a delete with no entry is not.
     await auditLog({
       action: 'baby_profile_deleted',
       userId: user.uid,
@@ -73,6 +61,25 @@ export async function DELETE(req: Request, ctx: Ctx) {
       details: { name: `${baby.name ?? ''} ${baby.familyName ?? ''}`.trim() },
       ...requestContext(req),
     });
+
+    await adminDb.recursiveDelete(ref);
+
+    // Keep the coach's and parents' back-references consistent. update(), not
+    // set(merge): a uid whose user document is gone must not get a stub created.
+    const NOT_FOUND = 5;
+    await Promise.all(
+      [baby.assignedCoachId, ...(baby.parentIds ?? [])].filter(Boolean).map((uid) =>
+        adminDb
+          .collection('users')
+          .doc(uid)
+          .update({ managedBabyProfiles: FieldValue.arrayRemove(id) })
+          .catch((error: { code?: number }) => {
+            if (error.code !== NOT_FOUND) {
+              console.error(`[babies] Deleted ${id} but could not update user ${uid}:`, error);
+            }
+          })
+      )
+    );
 
     return NextResponse.json({ ok: true });
   });

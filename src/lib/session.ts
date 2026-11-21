@@ -48,8 +48,13 @@ async function fetchSessionKeys(): Promise<Record<string, string>> {
   if (cachedKeys && cachedKeys.expiresAt > Date.now()) {
     return cachedKeys.keys;
   }
-  const response = await fetch(SESSION_KEYS_URL);
+  const response = await fetch(SESSION_KEYS_URL).catch((error) => {
+    // Fails closed (every protected page redirects to login); say why in the logs.
+    console.error('[session] Could not fetch session-cookie keys:', error);
+    throw error;
+  });
   if (!response.ok) {
+    console.error(`[session] Fetching session-cookie keys failed: ${response.status}`);
     throw new Error(`Fetching session keys failed: ${response.status}`);
   }
   const keys = (await response.json()) as Record<string, string>;

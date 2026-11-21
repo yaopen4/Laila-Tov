@@ -3,7 +3,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebaseAdmin';
 import { ApiError, handleRoute, readJson, requireAuth } from '@/lib/apiAuth';
-import { auditLog, requestContext } from '@/lib/server/audit';
+import { auditInBatch, requestContext } from '@/lib/server/audit';
 import { cleanSleepRecord, loadBabyForWrite, touched } from '@/lib/server/babies';
 
 export const runtime = 'nodejs';
@@ -35,9 +35,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       updatedBy: user.uid,
     });
     batch.update(babyRef, touched());
-    await batch.commit();
-
-    await auditLog({
+    auditInBatch(batch, {
       action: 'sleep_record_updated',
       userId: user.uid,
       organizationId: user.organizationId,
@@ -47,6 +45,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       details: { date: record.date, cycles: record.sleepCycles.length },
       ...requestContext(req),
     });
+    await batch.commit();
 
     return NextResponse.json({ ok: true });
   });
@@ -60,9 +59,7 @@ export async function DELETE(req: Request, ctx: Ctx) {
     const batch = adminDb.batch();
     batch.delete(recordRef);
     batch.update(babyRef, touched());
-    await batch.commit();
-
-    await auditLog({
+    auditInBatch(batch, {
       action: 'sleep_record_deleted',
       userId: user.uid,
       organizationId: user.organizationId,
@@ -71,6 +68,7 @@ export async function DELETE(req: Request, ctx: Ctx) {
       success: true,
       ...requestContext(req),
     });
+    await batch.commit();
 
     return NextResponse.json({ ok: true });
   });

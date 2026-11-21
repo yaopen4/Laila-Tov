@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SignJWT, UnsecuredJWT, exportJWK, generateKeyPair, importJWK } from 'jose';
 
 import { emulatorSessionsAllowed, rolesForPath, verifySessionCookie } from '@/lib/session';
+import { safeNextPath } from '@/lib/routeAccess';
 
 const PROJECT = 'laila-tov-prod';
 const ISSUER = `https://session.firebase.google.com/${PROJECT}`;
@@ -80,5 +81,37 @@ describe('rolesForPath', () => {
     expect(rolesForPath('/')).toBeNull();
     expect(rolesForPath('/signup')).toBeNull();
     expect(rolesForPath('/administrator')).toBeNull();
+  });
+});
+
+describe('safeNextPath (post-login redirect)', () => {
+  const ORIGIN = 'https://lailatov.example';
+  const safe = (next: string | null, role: 'admin' | 'coach' | 'parent' = 'admin') =>
+    safeNextPath(next, ORIGIN, role, '/fallback');
+
+  it('allows a same-site path the role may open, keeping query and hash', () => {
+    expect(safe('/admin/users?tab=2#x')).toBe('/admin/users?tab=2#x');
+    expect(safe('/parent/abc', 'parent')).toBe('/parent/abc');
+  });
+
+  it('refuses paths the role may not open', () => {
+    expect(safe('/admin/users', 'coach')).toBe('/fallback');
+    expect(safe('/signup')).toBe('/fallback');
+    expect(safe(null)).toBe('/fallback');
+  });
+
+  it('never leaves the site, whatever the encoding', () => {
+    for (const evil of [
+      '//evil.com/admin',
+      '/\t/evil.com/admin',
+      '/\n/evil.com/admin',
+      '/\r\n/evil.com/admin',
+      '\\\\evil.com/admin',
+      '/\\evil.com/admin',
+      'https://evil.com/admin',
+      'javascript:alert(1)//admin',
+    ]) {
+      expect(safe(evil), JSON.stringify(evil)).toBe('/fallback');
+    }
   });
 });

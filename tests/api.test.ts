@@ -540,6 +540,18 @@ describe('auth: session cookie', () => {
     expect(session).toEqual({ uid: COACH_UID, role: 'coach', organizationId: ORG });
   });
 
+  it('refuses a cross-site text/plain form post (login CSRF)', async () => {
+    const response = await createSessionRoute(
+      new Request('http://localhost/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ idToken: coachToken }),
+      })
+    );
+    expect(response.status).toBe(415);
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
   it('rejects a garbage token', async () => {
     const response = await createSessionRoute(
       post('http://localhost/api/auth/session', { idToken: 'not-a-token' })
@@ -728,6 +740,15 @@ describe('babies and sleep records: audited server-side writes (#4)', () => {
     expect((await adminDb.doc(`baby_profiles/${BABY}`).get()).exists).toBe(false);
     expect((await adminDb.doc(`baby_profiles/${BABY}/sleep_records/r1`).get()).exists).toBe(false);
     expect(await auditActions()).toContain('baby_profile_deleted');
+
+  });
+
+  it('deleting a baby does not create user documents for missing users', async () => {
+    await adminDb.doc(`baby_profiles/${BABY}`).update({ parentIds: ['parent-uid', 'ghost-uid'] });
+    const res = await deleteBabyRoute(req('DELETE', 'http://localhost/x', adminToken), params({ id: BABY }));
+    expect(res.status).toBe(200);
+    expect((await adminDb.doc('users/ghost-uid').get()).exists).toBe(false);
+    expect((await adminDb.doc(`users/${COACH_UID}`).get()).data()?.managedBabyProfiles).toEqual([]);
   });
 
   it('an admin from another organization cannot touch this baby', async () => {

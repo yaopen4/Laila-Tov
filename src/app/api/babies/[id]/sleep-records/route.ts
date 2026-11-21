@@ -3,7 +3,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebaseAdmin';
 import { handleRoute, readJson, requireAuth } from '@/lib/apiAuth';
-import { auditLog, requestContext } from '@/lib/server/audit';
+import { auditInBatch, requestContext } from '@/lib/server/audit';
 import { cleanSleepRecord, loadBabyForWrite, touched } from '@/lib/server/babies';
 
 export const runtime = 'nodejs';
@@ -25,9 +25,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       createdBy: user.uid,
     });
     batch.update(ref, touched());
-    await batch.commit();
-
-    await auditLog({
+    auditInBatch(batch, {
       action: 'sleep_record_created',
       userId: user.uid,
       organizationId: user.organizationId,
@@ -37,6 +35,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       details: { date: record.date, cycles: record.sleepCycles.length },
       ...requestContext(req),
     });
+    await batch.commit();
 
     return NextResponse.json({ id: recordRef.id }, { status: 201 });
   });

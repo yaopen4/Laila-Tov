@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type WriteBatch } from 'firebase-admin/firestore';
 import { adminDb } from '../firebaseAdmin';
 
 /**
@@ -42,6 +42,18 @@ export async function auditLog(event: AuditEvent): Promise<void> {
   } catch (error) {
     console.error('[audit] Failed to write audit entry:', event.action, error);
   }
+}
+
+/**
+ * Add the audit entry to the same batch as the change it records, so the two commit
+ * together: a change can never land without its entry. Prefer this over auditLog()
+ * wherever the change itself is a batched write.
+ */
+export function auditInBatch(batch: WriteBatch, event: AuditEvent): void {
+  batch.set(adminDb.collection('audit_logs').doc(), {
+    ...compact({ ...event, details: event.details ? compact(event.details) : undefined }),
+    timestamp: FieldValue.serverTimestamp(),
+  });
 }
 
 /** Pull client IP / user-agent off the request for the audit record. */

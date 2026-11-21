@@ -142,7 +142,15 @@ export class AuthService {
 
       // Server-side route protection reads an httpOnly session cookie, not the
       // client SDK's state. Without it, middleware would bounce every protected page.
-      await this.establishSession(firebaseUser);
+      try {
+        await this.establishSession(firebaseUser);
+      } catch (error) {
+        // Without a session cookie every protected page bounces back to login; do
+        // not leave the browser half signed in.
+        await firebaseSignOut(firebaseAuthInstance).catch(() => undefined);
+        this.clearUserCache();
+        throw error;
+      }
 
       return this.convertToAuthUser(firebaseUser, enhancedUser);
     } catch (error) {

@@ -29,6 +29,12 @@ function cookieOptions(maxAge: number) {
  */
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    // A cross-site <form enctype="text/plain"> can POST JSON-looking text without a
+    // CORS preflight, which would let another site plant ITS session in this browser
+    // (login CSRF). Such a form cannot send application/json.
+    if (!req.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+      throw new ApiError(415, 'Session requests must be application/json', 'בקשה לא תקינה.');
+    }
     const body = await readJson(req);
     const idToken = requireString(body, 'idToken', 'בקשה לא תקינה.');
 

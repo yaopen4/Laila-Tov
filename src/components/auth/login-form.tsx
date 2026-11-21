@@ -16,26 +16,14 @@ import { LogIn } from 'lucide-react';
 import { AuthService, type AuthUser } from '@/services/authService';
 import { Separator } from '../ui/separator';
 import { getRedirectPathForRole } from '@/lib/permissions';
-import { rolesForPath, type SessionRole } from '@/lib/routeAccess';
+import { safeNextPath, type SessionRole } from '@/lib/routeAccess';
 
-/**
- * Where to go after signing in. Middleware sends people here with ?next= when they
- * open a protected page without a session; honour it only for a same-site path this
- * role may actually open, so it cannot become an open redirect.
- */
+/** Where to go after signing in: the ?next= middleware added, if it is safe. */
 function postLoginPath(role: SessionRole, fallback: string): string {
   if (typeof window === 'undefined') return fallback;
   const next = new URLSearchParams(window.location.search).get('next');
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) {
-    return fallback;
-  }
-  return rolesForPath(new URL(next, window.location.origin).pathname)?.includes(role)
-    ? next
-    : fallback;
+  return safeNextPath(next, window.location.origin, role, fallback);
 }
-
-
-
 
 const LoginForm: FC = () => {
   const [email, setEmail] = useState('');

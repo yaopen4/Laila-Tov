@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 
+import { adminDb } from '@/lib/firebaseAdmin';
 import { ApiError, handleRoute, readJson, requireAuth } from '@/lib/apiAuth';
-import { auditLog, requestContext } from '@/lib/server/audit';
+import { auditInBatch, requestContext } from '@/lib/server/audit';
 import { loadBabyForWrite, touched } from '@/lib/server/babies';
 
 export const runtime = 'nodejs';
@@ -25,14 +26,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const { ref } = await loadBabyForWrite(user, id, { allowParent: false });
 
-    await ref.update({
+    const batch = adminDb.batch();
+    batch.update(ref, {
       status: archived ? 'archived' : 'active',
       isArchived: archived,
       dateArchived: archived ? new Date().toISOString() : null,
       ...touched(),
     });
-
-    await auditLog({
+    auditInBatch(batch, {
       action: archived ? 'baby_profile_archived' : 'baby_profile_restored',
       userId: user.uid,
       organizationId: user.organizationId,
@@ -41,6 +42,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       success: true,
       ...requestContext(req),
     });
+    await batch.commit();
 
     return NextResponse.json({ ok: true });
   });
