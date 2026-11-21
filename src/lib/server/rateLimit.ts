@@ -111,6 +111,8 @@ export const LIMITS = {
   validateInvitation: { name: 'validate-invitation', limit: 30, windowMs: 15 * 60 * 1000 },
   /** Bootstrap runs once in a system's lifetime; anything more is an attack. */
   bootstrap: { name: 'bootstrap', limit: 5, windowMs: 60 * 60 * 1000 },
+  /** Each health check makes two backend reads; keep it from becoming a cost lever. */
+  health: { name: 'health', limit: 30, windowMs: 60 * 1000 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 /** Test seam: clears all counters. */

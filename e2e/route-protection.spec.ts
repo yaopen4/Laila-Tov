@@ -58,3 +58,29 @@ test.describe('route protection', () => {
     expect(response.status()).toBe(307);
   });
 });
+
+test.describe('response hardening', () => {
+  test('pages carry the security headers', async ({ request }) => {
+    const headers = (await request.get('/')).headers();
+    expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+    expect(headers['content-security-policy']).toContain("object-src 'none'");
+    expect(headers['x-frame-options']).toBe('DENY');
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['x-powered-by']).toBeUndefined();
+  });
+
+  test('an unknown page shows the Hebrew not-found page', async ({ page }) => {
+    const response = await page.goto('/no-such-page');
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText('הדף לא נמצא')).toBeVisible();
+  });
+
+  test('the health check reports the backend reachable', async ({ request }) => {
+    const response = await request.get('/api/health');
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      status: 'ok',
+      checks: { firestore: 'ok', auth: 'ok' },
+    });
+  });
+});

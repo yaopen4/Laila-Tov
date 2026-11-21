@@ -66,6 +66,8 @@ export async function expectNoCrash(page: Page): Promise<void> {
   await expect(page.locator('body')).not.toContainText('Application error');
   await expect(page.locator('body')).not.toContainText('Invalid time value');
   await expect(page.locator('body')).not.toContainText('Unhandled Runtime Error');
+  // Our own error boundary (src/app/error.tsx) replaces Next's text above.
+  await expect(page.locator('body')).not.toContainText('משהו השתבש');
 }
 
 /**

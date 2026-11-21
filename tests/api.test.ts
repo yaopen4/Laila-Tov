@@ -26,6 +26,7 @@ import {
 import { POST as bootstrapRoute } from '../src/app/api/admin/bootstrap/route';
 import { __resetRateLimits, LIMITS } from '../src/lib/server/rateLimit';
 import { DELETE as deleteSessionRoute, POST as createSessionRoute } from '../src/app/api/auth/session/route';
+import { GET as healthRoute } from '../src/app/api/health/route';
 import { SESSION_COOKIE, verifySessionCookie } from '../src/lib/session';
 
 const ORG = 'test-org';
@@ -735,5 +736,15 @@ describe('babies and sleep records: audited server-side writes (#4)', () => {
     const token = await idTokenFor('foreign-admin');
     const res = await deleteBabyRoute(req('DELETE', 'http://localhost/x', token), params({ id: BABY }));
     expect(res.status).toBe(403);
+  });
+});
+
+describe('health', () => {
+  it('reports ok when Firestore and Auth are reachable, without leaking details', async () => {
+    const response = await healthRoute(new Request('http://localhost/api/health'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ status: 'ok', checks: { firestore: 'ok', auth: 'ok' } });
+    expect(Object.keys(body).sort()).toEqual(['checks', 'emulators', 'status', 'version']);
   });
 });
