@@ -149,40 +149,23 @@ service cloud.firestore {
       // whole collection fails, because some returned document would not pass.
       allow read: if canReadBaby(resource.data);
 
-      allow create: if isCoach()
-                    && request.resource.data.assignedCoachId == uid()
-                    && request.resource.data.organizationId == org()
-                    && request.resource.data.parentIds is list;
-
-      // Coach/admin may edit the profile. A parent may only touch the activity
-      // timestamps, which saving a sleep record updates.
-      allow update: if (
-                      (
-                        (
-                          (isAdmin() && inOrg(resource.data.organizationId))
-                          || (isCoach() && resource.data.assignedCoachId == uid())
-                        )
-                        && keepsFields(['organizationId', 'createdBy'])
-                      )
-                      || (
-                        isParent()
-                        && uid() in resource.data.parentIds
-                        && keepsFields([
-                             'organizationId', 'createdBy', 'assignedCoachId',
-                             'parentIds', 'status', 'coachNotes', 'inviteCode'
-                           ])
-                      )
-                    );
-
-      allow delete: if isAdmin() && inOrg(resource.data.organizationId);
+      // Every write goes through the API routes (POST /api/babies, PATCH/DELETE
+      // /api/babies/{id}, POST /api/babies/{id}/archive), which check access with the
+      // same rules as canReadBaby and write an audit entry. Allowing direct client
+      // writes would let any change bypass the audit trail (#4).
+      allow write: if false; // server only
 
       // ---------- sleep records ----------
       //
       // Costs one get() of the parent baby document. Unavoidable: the subcollection
       // document carries no ownership fields of its own.
+      //
+      // Written only through /api/babies/{id}/sleep-records, so that every change to a
+      // family's sleep data is audited.
 
       match /sleep_records/{recordId} {
-        allow read, write: if canReadBaby(babyData(babyId));
+        allow read: if canReadBaby(babyData(babyId));
+        allow write: if false; // server only
       }
     }
 

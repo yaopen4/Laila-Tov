@@ -4,15 +4,9 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc, 
-  updateDoc,
-  deleteDoc,
   query,
   where,
   orderBy,
-  Timestamp,
-  arrayUnion,
-  arrayRemove
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type {
@@ -21,7 +15,6 @@ import type {
   SleepRecord,
 } from '@/types/auth';
 import { AuthService } from './authService';
-import { RoleService } from './roleService';
 import { apiFetch } from '@/lib/apiClient';
 
 /**
@@ -170,211 +163,41 @@ export class BabyService {
   }
 
   /**
-   * Update baby profile with permission checks
+   * Edit a profile's descriptive fields. Runs server-side so it is audited (#4);
+   * the server re-checks that the caller may edit this baby.
    */
-  static async updateBabyProfile(
-    babyId: string,
-    updates: Partial<BabyProfile>,
-    userId?: string
-  ): Promise<void> {
-    if (!userId) {
-      const currentUser = await AuthService.getCurrentUser();
-      if (!currentUser) throw new Error('User not authenticated');
-      userId = currentUser.uid;
-    }
-
-    const babyProfile = await this.getBabyProfile(babyId, userId);
-    
-    if (!babyProfile) {
-      throw new Error('Baby profile not found');
-    }
-
-    // Check update permissions
-    const hasPermission = await RoleService.userHasPermission(
-      userId,
-      'babies.update.assigned',
-      { babyProfileId: babyId }
-    );
-    
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to update baby profile');
-    }
-
-    const previousValues = { ...babyProfile };
-    
-    // Prepare update data
-    const updateData = {
-      ...updates,
-      lastUpdatedAt: Timestamp.now(),
-      lastModified: new Date().toISOString()
-    };
-
-    await updateDoc(doc(db, 'baby_profiles', babyId), updateData);
+  static async updateBabyProfile(babyId: string, updates: Partial<BabyFormData>): Promise<void> {
+    await apiFetch(`/api/babies/${encodeURIComponent(babyId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name: updates.name,
+        familyName: updates.familyName,
+        age: updates.age,
+        motherName: updates.motherName,
+        fatherName: updates.fatherName,
+        siblingsCount: updates.siblingsCount,
+        siblingsNames: updates.siblingsNames,
+        description: updates.description,
+        coachNotes: updates.coachNotes,
+      }),
+    });
   }
 
-  /**
-   * Archive baby profile
-   */
-  static async archiveBabyProfile(
-    babyId: string,
-    userId?: string
-  ): Promise<void> {
-    if (!userId) {
-      const currentUser = await AuthService.getCurrentUser();
-      if (!currentUser) throw new Error('User not authenticated');
-      userId = currentUser.uid;
-    }
-    const hasPermission = await RoleService.userHasPermission(
-      userId,
-      'babies.archive',
-      { babyProfileId: babyId }
-    );
-    
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to archive baby profile');
-    }
-
-    const updateData = {
-      status: 'archived' as const,
-      isArchived: true,
-      dateArchived: new Date().toISOString(),
-      lastUpdatedAt: Timestamp.now()
-    };
-
-    await updateDoc(doc(db, 'baby_profiles', babyId), updateData);
-
-    // Log archive action
+  /** Archive a profile (coach, admin). Audited server-side. */
+  static async archiveBabyProfile(babyId: string): Promise<void> {
+    await this.setArchived(babyId, true);
   }
 
-  /**
-   * Restore archived baby profile
-   */
-  static async restoreBabyProfile(
-    babyId: string,
-    userId?: string
-  ): Promise<void> {
-    if (!userId) {
-      const currentUser = await AuthService.getCurrentUser();
-      if (!currentUser) throw new Error('User not authenticated');
-      userId = currentUser.uid;
-    }
-    const hasPermission = await RoleService.userHasPermission(
-      userId,
-      'babies.archive',
-      { babyProfileId: babyId }
-    );
-    
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to restore baby profile');
-    }
-
-    const updateData = {
-      status: 'active' as const,
-    isArchived: false,
-    dateArchived: null,
-      lastUpdatedAt: Timestamp.now()
-    };
-
-    await updateDoc(doc(db, 'baby_profiles', babyId), updateData);
-
-    // Log restore action
+  /** Restore an archived profile (coach, admin). Audited server-side. */
+  static async restoreBabyProfile(babyId: string): Promise<void> {
+    await this.setArchived(babyId, false);
   }
 
-  /**
-   * Add parent to baby profile
-   */
-  static async addParentToBabyProfile(
-    babyId: string,
-    parentId: string,
-    userId: string
-  ): Promise<void> {
-    const hasPermission = await RoleService.userHasPermission(
-      userId,
-      'babies.update.assigned',
-      { babyProfileId: babyId }
-    );
-    
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to modify baby profile');
-    }
-
-    await updateDoc(doc(db, 'baby_profiles', babyId), {
-      parentIds: arrayUnion(parentId),
-      lastUpdatedAt: Timestamp.now()
+  private static async setArchived(babyId: string, archived: boolean): Promise<void> {
+    await apiFetch(`/api/babies/${encodeURIComponent(babyId)}/archive`, {
+      method: 'POST',
+      body: JSON.stringify({ archived }),
     });
-
-    // Update parent's managed baby profiles
-    await updateDoc(doc(db, 'users', parentId), {
-      managedBabyProfiles: arrayUnion(babyId)
-    });
-
-    // Log action
-  }
-
-  /**
-   * Remove parent from baby profile
-   */
-  static async removeParentFromBabyProfile(
-    babyId: string,
-    parentId: string,
-    userId: string
-  ): Promise<void> {
-    const hasPermission = await RoleService.userHasPermission(
-      userId,
-      'babies.update.assigned',
-      { babyProfileId: babyId }
-    );
-    
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to modify baby profile');
-    }
-
-    await updateDoc(doc(db, 'baby_profiles', babyId), {
-      parentIds: arrayRemove(parentId),
-      lastUpdatedAt: Timestamp.now()
-    });
-
-    // Update parent's managed baby profiles
-    await updateDoc(doc(db, 'users', parentId), {
-      managedBabyProfiles: arrayRemove(babyId)
-    });
-
-    // Log action
-  }
-
-  /**
-   * Transfer baby profile to another coach
-   */
-  static async transferBabyProfile(
-    babyId: string,
-    newCoachId: string,
-    userId: string
-  ): Promise<void> {
-    // Only admins can transfer baby profiles
-    const currentUser = await AuthService.getCurrentUser();
-    
-    if (!currentUser || currentUser.role !== 'admin') {
-      throw new Error('Only administrators can transfer baby profiles');
-    }
-
-    const babyProfile = await this.getBabyProfile(babyId, userId);
-    
-    if (!babyProfile) {
-      throw new Error('Baby profile not found');
-    }
-
-    const previousCoachId = babyProfile.assignedCoachId;
-
-    await updateDoc(doc(db, 'baby_profiles', babyId), {
-      assignedCoachId: newCoachId,
-      lastUpdatedAt: Timestamp.now()
-    });
-
-    // Update coach profiles
-    await this.removeBabyFromCoachProfile(previousCoachId, babyId);
-    await this.addBabyToCoachProfile(newCoachId, babyId);
-
-    // Log transfer
   }
 
   /**
@@ -434,30 +257,16 @@ export class BabyService {
   }
 
   /** Alias for restoreBabyProfile, which is the name the archive page uses. */
-  static async unarchiveBabyProfile(babyId: string, userId?: string): Promise<void> {
-    return this.restoreBabyProfile(babyId, userId);
+  static async unarchiveBabyProfile(babyId: string): Promise<void> {
+    return this.restoreBabyProfile(babyId);
   }
 
   /**
-   * Permanently delete a baby profile.
-   *
-   * Admin only, matching firestore.rules: a coach archives, an admin deletes. Sleep
-   * records live in a subcollection and are not removed by deleting the parent
-   * document, so they are cleared first — otherwise they would linger unreachable.
+   * Permanently delete a baby profile and its sleep records.
+   * Admin only, enforced server-side: a coach archives, an admin deletes.
    */
-  static async deleteBabyProfile(babyId: string, userId?: string): Promise<void> {
-    const currentUser = await AuthService.getCurrentUser();
-    if (!currentUser) throw new Error('User not authenticated');
-
-    const actingUserId = userId ?? currentUser.uid;
-
-    if (currentUser.role !== 'admin') {
-      throw new Error('Only an administrator can permanently delete a baby profile');
-    }
-
-    const records = await getDocs(collection(db, 'baby_profiles', babyId, 'sleep_records'));
-    await Promise.all(records.docs.map((record) => deleteDoc(record.ref)));
-    await deleteDoc(doc(db, 'baby_profiles', babyId));
+  static async deleteBabyProfile(babyId: string): Promise<void> {
+    await apiFetch(`/api/babies/${encodeURIComponent(babyId)}`, { method: 'DELETE' });
   }
 
   /**
@@ -472,113 +281,47 @@ export class BabyService {
   }
 
   /**
-   * Convenience: add a new sleep record (wraps saveSleepRecord)
+   * The body the sleep-record routes accept. The date is converted to a local
+   * calendar key HERE, in the family's own timezone; the server's would be wrong.
    */
-  static async addSleepRecord(
-    babyId: string,
-    data: Omit<SleepRecord, 'id'>
-  ): Promise<string> {
-    const currentUser = await AuthService.getCurrentUser();
-    if (!currentUser) {
-      throw new Error('User not authenticated');
-    }
-    return this.saveSleepRecord(babyId, data, currentUser.uid);
+  private static sleepRecordBody(data: Partial<SleepRecord> | Omit<SleepRecord, 'id'>): string {
+    return JSON.stringify({
+      date: toDateKey(data.date as unknown as Date | string),
+      sleepCycles: data.sleepCycles,
+    });
+  }
+
+  /** Log a day's sleep. Returns the new record's id. */
+  static async addSleepRecord(babyId: string, data: Omit<SleepRecord, 'id'>): Promise<string> {
+    const { id } = await apiFetch<{ id: string }>(
+      `/api/babies/${encodeURIComponent(babyId)}/sleep-records`,
+      { method: 'POST', body: this.sleepRecordBody(data) }
+    );
+    return id;
   }
 
   /**
-   * Update an existing sleep record
+   * Replace a day's record. The previous client-side version wrote the form's Date
+   * object as-is, storing a Timestamp that later rendered as Invalid Date; the shared
+   * body builder normalises it like a new record.
    */
   static async updateSleepRecord(
     babyId: string,
     recordId: string,
     updates: Partial<SleepRecord>
   ): Promise<void> {
-    const currentUser = await AuthService.getCurrentUser();
-    if (!currentUser) {
-      throw new Error('User not authenticated');
-    }
-    // Permission check
-    const hasPermission = await RoleService.userHasPermission(
-      currentUser.uid,
-      'sleep_data.write.assigned',
-      { babyProfileId: babyId }
+    await apiFetch(
+      `/api/babies/${encodeURIComponent(babyId)}/sleep-records/${encodeURIComponent(recordId)}`,
+      { method: 'PATCH', body: this.sleepRecordBody(updates) }
     );
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to update sleep data');
-    }
-
-    const recordRef = doc(collection(db, 'baby_profiles', babyId, 'sleep_records'), recordId);
-    const previousDoc = await getDoc(recordRef);
-    const previousValues = previousDoc.exists() ? previousDoc.data() : undefined;
-
-    await setDoc(recordRef, { ...updates, id: recordId }, { merge: true });
-
-    await updateDoc(doc(db, 'baby_profiles', babyId), {
-      lastUpdatedAt: Timestamp.now(),
-      lastModified: new Date().toISOString()
-    });
   }
 
-  /**
-   * Delete a sleep record
-   */
-  static async deleteSleepRecord(
-    babyId: string,
-    recordId: string
-  ): Promise<void> {
-    const currentUser = await AuthService.getCurrentUser();
-    if (!currentUser) {
-      throw new Error('User not authenticated');
-    }
-    const hasPermission = await RoleService.userHasPermission(
-      currentUser.uid,
-      'sleep_data.write.assigned',
-      { babyProfileId: babyId }
+  /** Delete a sleep record. */
+  static async deleteSleepRecord(babyId: string, recordId: string): Promise<void> {
+    await apiFetch(
+      `/api/babies/${encodeURIComponent(babyId)}/sleep-records/${encodeURIComponent(recordId)}`,
+      { method: 'DELETE' }
     );
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to delete sleep data');
-    }
-
-    await deleteDoc(doc(db, 'baby_profiles', babyId, 'sleep_records', recordId));
-  }
-
-  /**
-   * Create or update sleep record
-   */
-  static async saveSleepRecord(
-    babyId: string,
-    sleepRecord: Omit<SleepRecord, 'id'>,
-    userId: string
-  ): Promise<string> {
-    // Check permissions
-    const hasPermission = await RoleService.userHasPermission(
-      userId,
-      'sleep_data.write.assigned',
-      { babyProfileId: babyId }
-    );
-    
-    if (!hasPermission) {
-      throw new Error('Insufficient permissions to save sleep data');
-    }
-
-    const sleepRecordRef = doc(collection(db, 'baby_profiles', babyId, 'sleep_records'));
-    const sleepRecordWithId = {
-      ...sleepRecord,
-      // Always a 'YYYY-MM-DD' string, whatever the form handed us.
-      date: toDateKey(sleepRecord.date as unknown as Date | string),
-      id: sleepRecordRef.id,
-      timestamp: Timestamp.now()
-    };
-
-    await setDoc(sleepRecordRef, sleepRecordWithId);
-
-    // Update baby profile last modified
-    await updateDoc(doc(db, 'baby_profiles', babyId), {
-      lastUpdatedAt: Timestamp.now(),
-      lastModified: new Date().toISOString()
-    });
-
-    return sleepRecordRef.id;
   }
 
   // Private helper methods
@@ -610,39 +353,6 @@ export class BabyService {
     }
 
     return false;
-  }
-
-  /**
-   * Add baby to coach's managed profiles
-   */
-  private static async addBabyToCoachProfile(
-    coachId: string,
-    babyId: string
-  ): Promise<void> {
-    await updateDoc(doc(db, 'users', coachId), {
-      managedBabyProfiles: arrayUnion(babyId)
-    });
-  }
-
-  /**
-   * Remove baby from coach's managed profiles
-   */
-  private static async removeBabyFromCoachProfile(
-    coachId: string,
-    babyId: string
-  ): Promise<void> {
-    await updateDoc(doc(db, 'users', coachId), {
-      managedBabyProfiles: arrayRemove(babyId)
-    });
-  }
-
-  /**
-   * Calculate date of birth from age in months
-   */
-  private static calculateDateOfBirth(ageInMonths: number): Timestamp {
-    const now = new Date();
-    const birthDate = new Date(now.getFullYear(), now.getMonth() - ageInMonths, now.getDate());
-    return Timestamp.fromDate(birthDate);
   }
 
   /**

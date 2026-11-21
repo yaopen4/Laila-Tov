@@ -41,12 +41,16 @@ test.describe('parent', () => {
     await page.fill('input[name="sleepCycles.0.whoPutToSleep"]', 'אמא');
     await page.fill('textarea[name="sleepCycles.0.howFellAsleep"]', 'שיר ערש');
 
+    // Wait for the server to confirm, not for text on the page: the history section
+    // already shows "עדכון שינה אחרון" from seed data, so a text check passed before
+    // the request finished and the reload below aborted it mid-flight.
+    const saved = page.waitForResponse(
+      (r) => r.url().includes('/sleep-records') && r.request().method() === 'POST',
+      { timeout: 45_000 }
+    );
     await page.getByRole('button', { name: /שמור נתוני שינה|שומר/ }).click();
-
-    // Saved.
-    await expect(page.locator('body')).toContainText(/נשמר|בהצלחה|עדכון שינה אחרון/, {
-      timeout: 45_000,
-    });
+    expect((await saved).status()).toBe(201);
+    await expect(page.getByText('נתוני שינה נשמרו!').first()).toBeVisible();
 
     // The real assertion: reload and confirm it renders. This is where the date bug
     // surfaced, and where a regression would surface again.
