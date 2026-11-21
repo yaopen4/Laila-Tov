@@ -33,4 +33,6 @@ process.env.FIREBASE_AUTH_EMULATOR_HOST = `localhost:${TEST_AUTH_PORT}`;
 process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = TEST_PROJECT_ID;
 process.env.FIREBASE_PROJECT_ID = TEST_PROJECT_ID;
 
-process.env.ADMIN_BOOTSTRAP_SECRET ??= 'test-bootstrap-secret-value';
+// Unconditional for the same reason: .env.local carries the .env.example placeholder,
+// which the bootstrap route deliberately refuses.
+process.env.ADMIN_BOOTSTRAP_SECRET = 'test-bootstrap-secret-value';
