@@ -66,8 +66,8 @@ This document consolidates requirements from the PRD and features documentation 
 
 ### Data Management
 - [~] **Implement data backup and recovery system** PRIORITY: LOW
-  - Done: `npm run backup` exports all of Firestore to JSON (Spark has no managed
-    backups). Still to do: a restore script, and scheduling the export.
+  - Done: `npm run backup` / `npm run restore` (Spark has no managed backups); round
+    trip verified identical. Still to do: schedule the export on a trusted machine.
   - Set up automated Firestore backups
   - Create data export/import utilities
   - Test recovery procedures

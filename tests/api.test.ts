@@ -727,6 +727,10 @@ describe('babies and sleep records: audited server-side writes (#4)', () => {
     expect(await auditActions()).toEqual(
       expect.arrayContaining(['baby_profile_archived', 'baby_profile_restored'])
     );
+
+    // The admin viewer filters on category; an entry without one can never match.
+    const categories = (await adminDb.collection('audit_logs').get()).docs.map((d) => d.data().category);
+    expect(new Set(categories)).toEqual(new Set(['data_modification']));
   });
 
   it('only an admin deletes, and the sleep records go with the profile', async () => {

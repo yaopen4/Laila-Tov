@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
     "test:e2e": "node scripts/e2e.mjs",
-    "backup": "tsx scripts/backup.ts"
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",

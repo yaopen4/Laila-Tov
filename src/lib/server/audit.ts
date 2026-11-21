@@ -28,17 +28,35 @@ export interface AuditEvent {
   userAgent?: string;
 }
 
+/**
+ * The admin audit viewer filters by category, so every entry needs one. Derived from
+ * the action here rather than passed by each route, so it cannot be forgotten.
+ */
+export function categoryFor(action: string): string {
+  if (action === 'user_registered' || action.startsWith('session_')) return 'authentication';
+  if (action.startsWith('invitation_') || action.startsWith('user_')) return 'user_management';
+  if (action.startsWith('baby_profile_') || action.startsWith('sleep_record_')) {
+    return 'data_modification';
+  }
+  return 'system_admin';
+}
+
 /** Firestore rejects undefined values outright, so drop those keys. */
 function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
+function entry(event: AuditEvent): Record<string, unknown> {
+  return {
+    ...compact({ ...event, details: event.details ? compact(event.details) : undefined }),
+    category: categoryFor(event.action),
+    timestamp: FieldValue.serverTimestamp(),
+  };
+}
+
 export async function auditLog(event: AuditEvent): Promise<void> {
   try {
-    await adminDb.collection('audit_logs').add({
-      ...compact({ ...event, details: event.details ? compact(event.details) : undefined }),
-      timestamp: FieldValue.serverTimestamp(),
-    });
+    await adminDb.collection('audit_logs').add(entry(event));
   } catch (error) {
     console.error('[audit] Failed to write audit entry:', event.action, error);
   }
@@ -50,10 +68,7 @@ export async function auditLog(event: AuditEvent): Promise<void> {
  * wherever the change itself is a batched write.
  */
 export function auditInBatch(batch: WriteBatch, event: AuditEvent): void {
-  batch.set(adminDb.collection('audit_logs').doc(), {
-    ...compact({ ...event, details: event.details ? compact(event.details) : undefined }),
-    timestamp: FieldValue.serverTimestamp(),
-  });
+  batch.set(adminDb.collection('audit_logs').doc(), entry(event));
 }
 
 /** Pull client IP / user-agent off the request for the audit record. */

@@ -247,7 +247,16 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=<project> FIREBASE_CLIENT_EMAIL=... FIREBASE_PRI
 npx firebase auth:export backups/auth.json --project <project>
 ```
 
-The files contain family data: store them encrypted and private.
+To recover, into an empty project (it refuses to overwrite one that has data unless
+you pass `--force`):
+
+```bash
+npm run restore -- backups/firestore-<project>-<time>.json
+npx firebase auth:import backups/auth.json --project <project>
+```
+
+The round trip (backup → wipe → restore → backup) is verified identical against the
+emulator. The files contain family data: store them encrypted and private.
 
 ---
 
