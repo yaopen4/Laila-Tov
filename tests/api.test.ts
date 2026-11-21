@@ -16,7 +16,18 @@ import { GET as validateRoute } from '../src/app/api/invitations/validate/route'
 import { GET as listInvitationsRoute, POST as createInvitationRoute } from '../src/app/api/invitations/route';
 import { POST as cancelInvitationRoute } from '../src/app/api/invitations/[id]/cancel/route';
 import { POST as createBabyRoute } from '../src/app/api/babies/route';
+import { DELETE as deleteBabyRoute, PATCH as updateBabyRoute } from '../src/app/api/babies/[id]/route';
+import { POST as archiveBabyRoute } from '../src/app/api/babies/[id]/archive/route';
+import { POST as createSleepRecordRoute } from '../src/app/api/babies/[id]/sleep-records/route';
+import {
+  DELETE as deleteSleepRecordRoute,
+  PATCH as updateSleepRecordRoute,
+} from '../src/app/api/babies/[id]/sleep-records/[recordId]/route';
 import { POST as bootstrapRoute } from '../src/app/api/admin/bootstrap/route';
+import { __resetRateLimits, LIMITS } from '../src/lib/server/rateLimit';
+import { DELETE as deleteSessionRoute, POST as createSessionRoute } from '../src/app/api/auth/session/route';
+import { GET as healthRoute } from '../src/app/api/health/route';
+import { SESSION_COOKIE, verifySessionCookie } from '../src/lib/session';
 
 const ORG = 'test-org';
 const PROJECT = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? 'demo-laila-tov-test';
@@ -98,6 +109,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  __resetRateLimits();
   await clearEmulator();
   adminToken = await makeUser(ADMIN_UID, 'admin', 'admin@test.com');
   coachToken = await makeUser(COACH_UID, 'coach', 'coach@test.com');
@@ -459,5 +471,305 @@ describe('bootstrap', () => {
       post('http://localhost/api/admin/bootstrap', { ...body, email: 'second@test.com' })
     );
     expect(second.status).toBe(409);
+  });
+});
+
+describe('rate limiting', () => {
+  it('refuses further validation attempts once the budget is spent', async () => {
+    const url = 'http://localhost/api/invitations/validate?code=NOSUCH12';
+
+    // Spend the whole budget. These are legitimate-shaped requests; only the rate
+    // should stop them.
+    for (let i = 0; i < LIMITS.validateInvitation.limit; i++) {
+      const ok = await validateRoute(get(url));
+      expect(ok.status).toBe(200);
+    }
+
+    const blocked = await validateRoute(get(url));
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toContain('יותר מדי בקשות');
+  });
+
+  it('counts each client IP separately', async () => {
+    const url = 'http://localhost/api/invitations/validate?code=NOSUCH12';
+    const from = (ip: string) => new Request(url, { headers: { 'x-forwarded-for': ip } });
+
+    for (let i = 0; i < LIMITS.validateInvitation.limit; i++) {
+      await validateRoute(from('203.0.113.1'));
+    }
+    expect((await validateRoute(from('203.0.113.1'))).status).toBe(429);
+
+    // A different caller is unaffected by the first one's spending.
+    expect((await validateRoute(from('203.0.113.2'))).status).toBe(200);
+  });
+
+  it('limits registration attempts', async () => {
+    const body = {
+      email: 'ratelimit@test.com', password: 'Password123!',
+      displayName: 'RL', invitationCode: 'BADCODE1',
+    };
+
+    for (let i = 0; i < LIMITS.register.limit; i++) {
+      const res = await registerRoute(post('http://localhost/api/auth/register', body));
+      expect(res.status).toBe(400);   // bad code, but not rate limited yet
+    }
+
+    expect((await registerRoute(post('http://localhost/api/auth/register', body))).status).toBe(429);
+  });
+});
+
+describe('auth: session cookie', () => {
+  function cookieFrom(response: Response): string {
+    const header = response.headers.get('set-cookie') ?? '';
+    const match = new RegExp(`${SESSION_COOKIE}=([^;]*)`).exec(header);
+    return match?.[1] ?? '';
+  }
+
+  it('exchanges a fresh ID token for an httpOnly cookie carrying the role', async () => {
+    const response = await createSessionRoute(
+      post('http://localhost/api/auth/session', { idToken: coachToken })
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('set-cookie')).toMatch(/HttpOnly/i);
+
+    // The emulator signs nothing, so verify the way middleware does in emulator mode.
+    const session = await verifySessionCookie(cookieFrom(response), {
+      projectId: PROJECT,
+      allowUnsigned: true,
+    });
+    expect(session).toEqual({ uid: COACH_UID, role: 'coach', organizationId: ORG });
+  });
+
+  it('refuses a cross-site text/plain form post (login CSRF)', async () => {
+    const response = await createSessionRoute(
+      new Request('http://localhost/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ idToken: coachToken }),
+      })
+    );
+    expect(response.status).toBe(415);
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('rejects a garbage token', async () => {
+    const response = await createSessionRoute(
+      post('http://localhost/api/auth/session', { idToken: 'not-a-token' })
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('refuses an account without role claims', async () => {
+    await adminAuth.createUser({ uid: 'noclaims', email: 'noclaims@test.com', password: 'Password123!' });
+    const token = await idTokenFor('noclaims');
+    const response = await createSessionRoute(post('http://localhost/api/auth/session', { idToken: token }));
+    expect(response.status).toBe(403);
+  });
+
+  it('clears the cookie on sign-out', async () => {
+    const response = await deleteSessionRoute();
+    expect(response.headers.get('set-cookie')).toMatch(new RegExp(`${SESSION_COOKIE}=;.*Max-Age=0`, 'i'));
+  });
+});
+
+describe('babies and sleep records: audited server-side writes (#4)', () => {
+  const BABY = 'baby-api';
+  const RECORD = { date: '2026-03-01', sleepCycles: [{ bedtime: '19:30', timeToSleep: '10 דקות', whoPutToSleep: 'אמא', howFellAsleep: 'הנקה', wakeTime: '06:15' }] };
+  let parentToken: string;
+  let strangerParentToken: string;
+  let otherCoachToken: string;
+
+  const params = <T extends Record<string, string>>(p: T) => ({ params: Promise.resolve(p) });
+  function req(method: string, url: string, token: string | undefined, body?: unknown): Request {
+    return new Request(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  }
+  async function auditActions(): Promise<string[]> {
+    const snap = await adminDb.collection('audit_logs').get();
+    return snap.docs.map((d) => d.data().action as string);
+  }
+
+  beforeEach(async () => {
+    parentToken = await makeUser('parent-uid', 'parent', 'parent@test.com');
+    strangerParentToken = await makeUser('stranger-uid', 'parent', 'stranger@test.com');
+    otherCoachToken = await makeUser('coach-2', 'coach', 'coach2@test.com');
+    await adminDb.collection('baby_profiles').doc(BABY).set({
+      id: BABY, name: 'Noam', familyName: 'Cohen', organizationId: ORG,
+      assignedCoachId: COACH_UID, parentIds: ['parent-uid'], status: 'active',
+      createdBy: COACH_UID, coachNotes: 'old',
+    });
+  });
+
+  it('a parent logs, edits and deletes a record for their own baby, each audited', async () => {
+    const created = await createSleepRecordRoute(
+      req('POST', 'http://localhost/x', parentToken, RECORD), params({ id: BABY })
+    );
+    expect(created.status).toBe(201);
+    const { id } = await created.json();
+
+    const stored = (await adminDb.doc(`baby_profiles/${BABY}/sleep_records/${id}`).get()).data();
+    expect(stored).toMatchObject({ date: '2026-03-01', createdBy: 'parent-uid' });
+    expect(stored?.sleepCycles[0]).toMatchObject({ bedtime: '19:30', wakeTime: '06:15' });
+
+    const updated = await updateSleepRecordRoute(
+      req('PATCH', 'http://localhost/x', parentToken, { ...RECORD, date: '2026-03-02' }),
+      params({ id: BABY, recordId: id })
+    );
+    expect(updated.status).toBe(200);
+    expect((await adminDb.doc(`baby_profiles/${BABY}/sleep_records/${id}`).get()).data()?.date).toBe('2026-03-02');
+
+    const deleted = await deleteSleepRecordRoute(
+      req('DELETE', 'http://localhost/x', parentToken), params({ id: BABY, recordId: id })
+    );
+    expect(deleted.status).toBe(200);
+    expect((await adminDb.doc(`baby_profiles/${BABY}/sleep_records/${id}`).get()).exists).toBe(false);
+
+    expect(await auditActions()).toEqual(
+      expect.arrayContaining(['sleep_record_created', 'sleep_record_updated', 'sleep_record_deleted'])
+    );
+  });
+
+  it("another family's parent and an unassigned coach are refused", async () => {
+    for (const token of [strangerParentToken, otherCoachToken]) {
+      const res = await createSleepRecordRoute(
+        req('POST', 'http://localhost/x', token, RECORD), params({ id: BABY })
+      );
+      expect(res.status).toBe(403);
+    }
+    const unauthenticated = await createSleepRecordRoute(
+      req('POST', 'http://localhost/x', undefined, RECORD), params({ id: BABY })
+    );
+    expect(unauthenticated.status).toBe(401);
+    expect((await adminDb.collection(`baby_profiles/${BABY}/sleep_records`).get()).size).toBe(0);
+  });
+
+  it('rejects malformed records', async () => {
+    const bad = [
+      { ...RECORD, date: '01/03/2026' },
+      { ...RECORD, date: { seconds: 1 } },
+      { ...RECORD, sleepCycles: [] },
+      { ...RECORD, sleepCycles: [{ bedtime: '25:00' }] },
+      { ...RECORD, sleepCycles: [{ bedtime: '19:00', howFellAsleep: 'x'.repeat(501) }] },
+    ];
+    for (const body of bad) {
+      const res = await createSleepRecordRoute(
+        req('POST', 'http://localhost/x', parentToken, body), params({ id: BABY })
+      );
+      expect(res.status, JSON.stringify(body).slice(0, 60)).toBe(400);
+    }
+  });
+
+  it('a record id from another baby is not reachable through this one', async () => {
+    await adminDb.collection('baby_profiles').doc('other-baby').set({
+      id: 'other-baby', organizationId: ORG, assignedCoachId: 'coach-2', parentIds: ['stranger-uid'],
+    });
+    await adminDb.doc('baby_profiles/other-baby/sleep_records/r1').set({ id: 'r1', date: '2026-01-01' });
+    const res = await deleteSleepRecordRoute(
+      req('DELETE', 'http://localhost/x', parentToken), params({ id: BABY, recordId: 'r1' })
+    );
+    expect(res.status).toBe(404);
+    expect((await adminDb.doc('baby_profiles/other-baby/sleep_records/r1').get()).exists).toBe(true);
+  });
+
+  it('the assigned coach edits only descriptive fields; access fields are ignored', async () => {
+    const res = await updateBabyRoute(
+      req('PATCH', 'http://localhost/x', coachToken, {
+        coachNotes: 'new notes', age: 7,
+        parentIds: ['stranger-uid'], assignedCoachId: 'coach-2', organizationId: 'evil',
+      }),
+      params({ id: BABY })
+    );
+    expect(res.status).toBe(200);
+    const baby = (await adminDb.doc(`baby_profiles/${BABY}`).get()).data();
+    expect(baby).toMatchObject({
+      coachNotes: 'new notes', age: 7,
+      parentIds: ['parent-uid'], assignedCoachId: COACH_UID, organizationId: ORG,
+    });
+    expect(await auditActions()).toContain('baby_profile_updated');
+  });
+
+  it('parents and other coaches cannot edit or archive a profile', async () => {
+    for (const token of [parentToken, otherCoachToken]) {
+      const edit = await updateBabyRoute(
+        req('PATCH', 'http://localhost/x', token, { coachNotes: 'x' }), params({ id: BABY })
+      );
+      expect(edit.status).toBe(403);
+      const archive = await archiveBabyRoute(
+        req('POST', 'http://localhost/x', token, { archived: true }), params({ id: BABY })
+      );
+      expect(archive.status).toBe(403);
+    }
+    expect((await adminDb.doc(`baby_profiles/${BABY}`).get()).data()?.coachNotes).toBe('old');
+  });
+
+  it('the coach archives and restores, both audited', async () => {
+    const archive = await archiveBabyRoute(
+      req('POST', 'http://localhost/x', coachToken, { archived: true }), params({ id: BABY })
+    );
+    expect(archive.status).toBe(200);
+    expect((await adminDb.doc(`baby_profiles/${BABY}`).get()).data()).toMatchObject({
+      status: 'archived', isArchived: true,
+    });
+
+    await archiveBabyRoute(
+      req('POST', 'http://localhost/x', coachToken, { archived: false }), params({ id: BABY })
+    );
+    expect((await adminDb.doc(`baby_profiles/${BABY}`).get()).data()).toMatchObject({
+      status: 'active', isArchived: false, dateArchived: null,
+    });
+    expect(await auditActions()).toEqual(
+      expect.arrayContaining(['baby_profile_archived', 'baby_profile_restored'])
+    );
+
+    // The admin viewer filters on category; an entry without one can never match.
+    const categories = (await adminDb.collection('audit_logs').get()).docs.map((d) => d.data().category);
+    expect(new Set(categories)).toEqual(new Set(['data_modification']));
+  });
+
+  it('only an admin deletes, and the sleep records go with the profile', async () => {
+    await adminDb.doc(`baby_profiles/${BABY}/sleep_records/r1`).set({ id: 'r1' });
+
+    const byCoach = await deleteBabyRoute(req('DELETE', 'http://localhost/x', coachToken), params({ id: BABY }));
+    expect(byCoach.status).toBe(403);
+
+    const byAdmin = await deleteBabyRoute(req('DELETE', 'http://localhost/x', adminToken), params({ id: BABY }));
+    expect(byAdmin.status).toBe(200);
+    expect((await adminDb.doc(`baby_profiles/${BABY}`).get()).exists).toBe(false);
+    expect((await adminDb.doc(`baby_profiles/${BABY}/sleep_records/r1`).get()).exists).toBe(false);
+    expect(await auditActions()).toContain('baby_profile_deleted');
+
+  });
+
+  it('deleting a baby does not create user documents for missing users', async () => {
+    await adminDb.doc(`baby_profiles/${BABY}`).update({ parentIds: ['parent-uid', 'ghost-uid'] });
+    const res = await deleteBabyRoute(req('DELETE', 'http://localhost/x', adminToken), params({ id: BABY }));
+    expect(res.status).toBe(200);
+    expect((await adminDb.doc('users/ghost-uid').get()).exists).toBe(false);
+    expect((await adminDb.doc(`users/${COACH_UID}`).get()).data()?.managedBabyProfiles).toEqual([]);
+  });
+
+  it('an admin from another organization cannot touch this baby', async () => {
+    await adminAuth.createUser({ uid: 'foreign-admin', email: 'fa@test.com', password: 'Password123!' });
+    await adminAuth.setCustomUserClaims('foreign-admin', { role: 'admin', organizationId: 'other-org' });
+    const token = await idTokenFor('foreign-admin');
+    const res = await deleteBabyRoute(req('DELETE', 'http://localhost/x', token), params({ id: BABY }));
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('health', () => {
+  it('reports ok when Firestore and Auth are reachable, without leaking details', async () => {
+    const response = await healthRoute(new Request('http://localhost/api/health'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ status: 'ok', checks: { firestore: 'ok', auth: 'ok' } });
+    expect(Object.keys(body).sort()).toEqual(['checks', 'emulators', 'status', 'version']);
   });
 });

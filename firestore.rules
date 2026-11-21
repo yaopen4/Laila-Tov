@@ -117,7 +117,10 @@ service cloud.firestore {
     }
 
     match /user_role_assignments/{assignmentId} {
-      allow read: if isSignedIn() && (resource.data.userId == uid() || isAdmin());
+      allow read: if isSignedIn() && (
+                    resource.data.userId == uid()
+                    || (isAdmin() && inOrg(resource.data.organizationId))
+                  );
       allow write: if false; // server only
     }
 
@@ -149,40 +152,23 @@ service cloud.firestore {
       // whole collection fails, because some returned document would not pass.
       allow read: if canReadBaby(resource.data);
 
-      allow create: if isCoach()
-                    && request.resource.data.assignedCoachId == uid()
-                    && request.resource.data.organizationId == org()
-                    && request.resource.data.parentIds is list;
-
-      // Coach/admin may edit the profile. A parent may only touch the activity
-      // timestamps, which saving a sleep record updates.
-      allow update: if (
-                      (
-                        (
-                          (isAdmin() && inOrg(resource.data.organizationId))
-                          || (isCoach() && resource.data.assignedCoachId == uid())
-                        )
-                        && keepsFields(['organizationId', 'createdBy'])
-                      )
-                      || (
-                        isParent()
-                        && uid() in resource.data.parentIds
-                        && keepsFields([
-                             'organizationId', 'createdBy', 'assignedCoachId',
-                             'parentIds', 'status', 'coachNotes', 'inviteCode'
-                           ])
-                      )
-                    );
-
-      allow delete: if isAdmin() && inOrg(resource.data.organizationId);
+      // Every write goes through the API routes (POST /api/babies, PATCH/DELETE
+      // /api/babies/{id}, POST /api/babies/{id}/archive), which check access with the
+      // same rules as canReadBaby and write an audit entry. Allowing direct client
+      // writes would let any change bypass the audit trail (#4).
+      allow write: if false; // server only
 
       // ---------- sleep records ----------
       //
       // Costs one get() of the parent baby document. Unavoidable: the subcollection
       // document carries no ownership fields of its own.
+      //
+      // Written only through /api/babies/{id}/sleep-records, so that every change to a
+      // family's sleep data is audited.
 
       match /sleep_records/{recordId} {
-        allow read, write: if canReadBaby(babyData(babyId));
+        allow read: if canReadBaby(babyData(babyId));
+        allow write: if false; // server only
       }
     }
 
@@ -191,23 +177,26 @@ service cloud.firestore {
     // Written exclusively by the server through the Admin SDK, which bypasses rules.
     // Clients read only; admins only, within their organization.
 
+    // Scoped to the admin's own organization: `isAdmin()` alone let an admin of one
+    // organization read every other organization's trail.
+
     match /audit_logs/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 
     match /audit_logs_security/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 
     match /audit_logs_compliance/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 
     match /compliance_reports/{reportId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 

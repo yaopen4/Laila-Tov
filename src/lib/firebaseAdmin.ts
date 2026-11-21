@@ -4,6 +4,10 @@ import { getApps, initializeApp, cert, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 
+import { readServiceAccount } from './serviceAccount';
+
+export { normalizePrivateKey, readServiceAccount } from './serviceAccount';
+
 /**
  * Firebase Admin SDK — server only.
  *
@@ -17,7 +21,10 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
  *     the SDK talks to the local emulator and needs no real credentials at all.
  *  2. FIREBASE_SERVICE_ACCOUNT_KEY — the service-account JSON, as a single-line string.
  *     This IS a secret. It belongs in .env.local or the host's secret store, never in git.
- *  3. Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS), for Google-hosted
+ *  3. FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY — the same credential split in two.
+ *     Smaller than the whole JSON, which matters on hosts that cap the total size of
+ *     a function's environment (Netlify and AWS Lambda allow 4 KB in all).
+ *  4. Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS), for Google-hosted
  *     environments that inject them automatically.
  */
 
@@ -40,30 +47,16 @@ function createApp(): App {
     return initializeApp({ projectId });
   }
 
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (raw) {
-    let parsed: { project_id?: string; client_email?: string; private_key?: string };
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(
-        'FIREBASE_SERVICE_ACCOUNT_KEY is not valid JSON. It should be the whole service-account ' +
-          'file contents on one line (newlines inside private_key escaped as \n).'
-      );
-    }
-
-    if (!parsed.client_email || !parsed.private_key) {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is missing client_email or private_key.');
-    }
-
+  const serviceAccount = readServiceAccount(process.env);
+  if (serviceAccount) {
+    const resolvedProjectId = serviceAccount.projectId ?? projectId;
     return initializeApp({
       credential: cert({
-        projectId: parsed.project_id ?? projectId,
-        clientEmail: parsed.client_email,
-        // Hosts that store the key in a single-line env var leave literal "\n" behind.
-        privateKey: parsed.private_key.replace(/\n/g, '\n'),
+        projectId: resolvedProjectId,
+        clientEmail: serviceAccount.clientEmail,
+        privateKey: serviceAccount.privateKey,
       }),
-      projectId: parsed.project_id ?? projectId,
+      projectId: resolvedProjectId,
     });
   }
 

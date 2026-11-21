@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleRoute } from '@/lib/apiAuth';
 import { validateInvitationCode } from '@/lib/server/invitations';
+import { enforceRateLimit, LIMITS } from '@/lib/server/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +17,10 @@ export const runtime = 'nodejs';
  */
 export async function GET(req: Request) {
   return handleRoute(async () => {
+    // This endpoint answers "does this code exist?" to anyone, so it is the
+    // natural place to probe. Tightest budget of the three.
+    enforceRateLimit(req, LIMITS.validateInvitation);
+
     const url = new URL(req.url);
     const code = url.searchParams.get('code')?.trim();
     const email = url.searchParams.get('email')?.trim() || undefined;

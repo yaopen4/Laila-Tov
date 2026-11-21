@@ -16,9 +16,14 @@ import { LogIn } from 'lucide-react';
 import { AuthService, type AuthUser } from '@/services/authService';
 import { Separator } from '../ui/separator';
 import { getRedirectPathForRole } from '@/lib/permissions';
+import { safeNextPath, type SessionRole } from '@/lib/routeAccess';
 
-
-
+/** Where to go after signing in: the ?next= middleware added, if it is safe. */
+function postLoginPath(role: SessionRole, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const next = new URLSearchParams(window.location.search).get('next');
+  return safeNextPath(next, window.location.origin, role, fallback);
+}
 
 const LoginForm: FC = () => {
   const [email, setEmail] = useState('');
@@ -62,7 +67,12 @@ const LoginForm: FC = () => {
       }
 
       toast({ title: "התחברות הצליחה", description: `ברוך הבא, ${loggedInUser.displayName || loggedInUser.email}!` });
-      router.push(getRedirectPathForRole(loggedInUser.role, loggedInUser.managedBabyProfiles ?? []));
+      router.push(
+        postLoginPath(
+          loggedInUser.role,
+          getRedirectPathForRole(loggedInUser.role, loggedInUser.managedBabyProfiles ?? [])
+        )
+      );
 
     } catch (error: any) {
       console.error("Authentication error:", error);

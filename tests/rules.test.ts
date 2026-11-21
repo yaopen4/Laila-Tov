@@ -21,7 +21,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
 
 const ORG = 'org-a';
 const OTHER_ORG = 'org-b';
@@ -146,53 +146,34 @@ describe('baby profiles: family isolation', () => {
   });
 });
 
-describe('baby profiles: writes', () => {
-  it('a coach can create a baby assigned to themselves', async () => {
-    await assertSucceeds(
+/**
+ * Baby profiles and sleep records are written only through the API routes, which
+ * check access and write an audit entry (#4). The access logic for writes is tested
+ * in api.test.ts; here the point is that no client — however entitled — can write
+ * directly and skip the audit trail.
+ */
+describe('baby profiles: writes are server-only', () => {
+  it('even the assigned coach CANNOT create, edit or delete directly', async () => {
+    await assertFails(
       setDoc(doc(ctx(COACH), 'baby_profiles', 'new-baby'), {
         id: 'new-baby', name: 'New', organizationId: ORG,
         assignedCoachId: COACH.uid, parentIds: [], status: 'active', createdBy: COACH.uid,
       })
     );
-  });
-
-  it('a coach CANNOT create a baby assigned to a different coach', async () => {
     await assertFails(
-      setDoc(doc(ctx(COACH), 'baby_profiles', 'new-baby'), {
-        id: 'new-baby', name: 'New', organizationId: ORG,
-        assignedCoachId: OTHER_COACH.uid, parentIds: [], status: 'active', createdBy: COACH.uid,
-      })
-    );
-  });
-
-  it('a parent CANNOT create a baby profile', async () => {
-    await assertFails(
-      setDoc(doc(ctx(PARENT), 'baby_profiles', 'new-baby'), {
-        id: 'new-baby', name: 'New', organizationId: ORG,
-        assignedCoachId: COACH.uid, parentIds: [PARENT.uid], status: 'active', createdBy: PARENT.uid,
-      })
-    );
-  });
-
-  it('a coach can update coach notes on their own baby', async () => {
-    await assertSucceeds(
       updateDoc(doc(ctx(COACH), 'baby_profiles', 'baby-1'), { coachNotes: 'updated' })
     );
+    await assertFails(deleteDoc(doc(ctx(COACH), 'baby_profiles', 'baby-1')));
   });
 
-  it('a parent can touch activity timestamps (saving a sleep record does this)', async () => {
-    await assertSucceeds(
+  it('an admin CANNOT delete directly either', async () => {
+    await assertFails(deleteDoc(doc(ctx(ADMIN), 'baby_profiles', 'baby-1')));
+  });
+
+  it('a parent CANNOT edit their baby or join another family', async () => {
+    await assertFails(
       updateDoc(doc(ctx(PARENT), 'baby_profiles', 'baby-1'), { lastUpdatedAt: new Date() })
     );
-  });
-
-  it('a parent CANNOT edit coach notes', async () => {
-    await assertFails(
-      updateDoc(doc(ctx(PARENT), 'baby_profiles', 'baby-1'), { coachNotes: 'hacked' })
-    );
-  });
-
-  it('a parent CANNOT add themselves to another family', async () => {
     await assertFails(
       updateDoc(doc(ctx(PARENT), 'baby_profiles', 'baby-2'), { parentIds: [PARENT.uid] })
     );
@@ -200,13 +181,17 @@ describe('baby profiles: writes', () => {
 });
 
 describe('sleep records', () => {
-  it('a parent can read and write records for their own baby', async () => {
+  it('a parent can read records for their own baby', async () => {
     await assertSucceeds(getDoc(doc(ctx(PARENT), 'baby_profiles/baby-1/sleep_records', 'rec-1')));
-    await assertSucceeds(
+  });
+
+  it('a parent CANNOT write records directly, even for their own baby (server only)', async () => {
+    await assertFails(
       setDoc(doc(ctx(PARENT), 'baby_profiles/baby-1/sleep_records', 'rec-new'), {
         id: 'rec-new', date: '2026-02-01', sleepCycles: [],
       })
     );
+    await assertFails(deleteDoc(doc(ctx(PARENT), 'baby_profiles/baby-1/sleep_records', 'rec-1')));
   });
 
   it("a parent CANNOT read another family's sleep records", async () => {
@@ -299,6 +284,17 @@ describe('invitations', () => {
 describe('audit logs', () => {
   it('an admin can read audit logs', async () => {
     await assertSucceeds(getDoc(doc(ctx(ADMIN), 'audit_logs', 'log-1')));
+  });
+
+  it("an admin of another organization CANNOT read this organization's audit logs", async () => {
+    await assertFails(getDoc(doc(ctx(FOREIGN_ADMIN), 'audit_logs', 'log-1')));
+    await assertFails(getDocs(collection(ctx(FOREIGN_ADMIN), 'audit_logs')));
+  });
+
+  it('an admin can query their own organization\'s audit logs', async () => {
+    await assertSucceeds(
+      getDocs(query(collection(ctx(ADMIN), 'audit_logs'), where('organizationId', '==', ORG)))
+    );
   });
 
   it('a coach CANNOT read audit logs', async () => {

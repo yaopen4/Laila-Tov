@@ -6,6 +6,7 @@ import { ApiError, handleRoute, readJson, requireString } from '@/lib/apiAuth';
 import { getPermissionsForRole, getRedirectPathForRole } from '@/lib/permissions';
 import { markInvitationAccepted, validateInvitationCode } from '@/lib/server/invitations';
 import { auditLog, requestContext } from '@/lib/server/audit';
+import { enforceRateLimit, LIMITS } from '@/lib/server/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -23,6 +24,9 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    // Unauthenticated by necessity -- the caller has no account yet.
+    enforceRateLimit(req, LIMITS.register);
+
     const body = await readJson(req);
 
     const email = requireString(body, 'email', 'נדרשת כתובת אימייל.').toLowerCase();

@@ -227,11 +227,14 @@ export function AdminDashboard() {
 
   const handleGenerateAuditReport = async () => {
     try {
+      const currentUser = await AuthService.getCurrentUser();
+      if (!currentUser?.organizationId) return;
+
       const result = await AuditLogger.generateComplianceReport({
-        organizationId: 'current-org',
+        organizationId: currentUser.organizationId,
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
         endDate: new Date(),
-        userId: 'current-user-id',
+        userId: currentUser.uid,
         reportType: 'full'
       });
 
