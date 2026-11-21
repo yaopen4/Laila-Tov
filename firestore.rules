@@ -117,7 +117,10 @@ service cloud.firestore {
     }
 
     match /user_role_assignments/{assignmentId} {
-      allow read: if isSignedIn() && (resource.data.userId == uid() || isAdmin());
+      allow read: if isSignedIn() && (
+                    resource.data.userId == uid()
+                    || (isAdmin() && inOrg(resource.data.organizationId))
+                  );
       allow write: if false; // server only
     }
 
@@ -174,23 +177,26 @@ service cloud.firestore {
     // Written exclusively by the server through the Admin SDK, which bypasses rules.
     // Clients read only; admins only, within their organization.
 
+    // Scoped to the admin's own organization: `isAdmin()` alone let an admin of one
+    // organization read every other organization's trail.
+
     match /audit_logs/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 
     match /audit_logs_security/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 
     match /audit_logs_compliance/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 
     match /compliance_reports/{reportId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() && inOrg(resource.data.organizationId);
       allow write: if false;
     }
 

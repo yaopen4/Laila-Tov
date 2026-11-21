@@ -286,6 +286,17 @@ describe('audit logs', () => {
     await assertSucceeds(getDoc(doc(ctx(ADMIN), 'audit_logs', 'log-1')));
   });
 
+  it("an admin of another organization CANNOT read this organization's audit logs", async () => {
+    await assertFails(getDoc(doc(ctx(FOREIGN_ADMIN), 'audit_logs', 'log-1')));
+    await assertFails(getDocs(collection(ctx(FOREIGN_ADMIN), 'audit_logs')));
+  });
+
+  it('an admin can query their own organization\'s audit logs', async () => {
+    await assertSucceeds(
+      getDocs(query(collection(ctx(ADMIN), 'audit_logs'), where('organizationId', '==', ORG)))
+    );
+  });
+
   it('a coach CANNOT read audit logs', async () => {
     await assertFails(getDoc(doc(ctx(COACH), 'audit_logs', 'log-1')));
   });
