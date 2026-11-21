@@ -18,6 +18,8 @@ import { POST as cancelInvitationRoute } from '../src/app/api/invitations/[id]/c
 import { POST as createBabyRoute } from '../src/app/api/babies/route';
 import { POST as bootstrapRoute } from '../src/app/api/admin/bootstrap/route';
 import { __resetRateLimits, LIMITS } from '../src/lib/server/rateLimit';
+import { DELETE as deleteSessionRoute, POST as createSessionRoute } from '../src/app/api/auth/session/route';
+import { SESSION_COOKIE, verifySessionCookie } from '../src/lib/session';
 
 const ORG = 'test-org';
 const PROJECT = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? 'demo-laila-tov-test';
@@ -505,5 +507,48 @@ describe('rate limiting', () => {
     }
 
     expect((await registerRoute(post('http://localhost/api/auth/register', body))).status).toBe(429);
+  });
+});
+
+describe('auth: session cookie', () => {
+  function cookieFrom(response: Response): string {
+    const header = response.headers.get('set-cookie') ?? '';
+    const match = new RegExp(`${SESSION_COOKIE}=([^;]*)`).exec(header);
+    return match?.[1] ?? '';
+  }
+
+  it('exchanges a fresh ID token for an httpOnly cookie carrying the role', async () => {
+    const response = await createSessionRoute(
+      post('http://localhost/api/auth/session', { idToken: coachToken })
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('set-cookie')).toMatch(/HttpOnly/i);
+
+    // The emulator signs nothing, so verify the way middleware does in emulator mode.
+    const session = await verifySessionCookie(cookieFrom(response), {
+      projectId: PROJECT,
+      allowUnsigned: true,
+    });
+    expect(session).toEqual({ uid: COACH_UID, role: 'coach', organizationId: ORG });
+  });
+
+  it('rejects a garbage token', async () => {
+    const response = await createSessionRoute(
+      post('http://localhost/api/auth/session', { idToken: 'not-a-token' })
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('refuses an account without role claims', async () => {
+    await adminAuth.createUser({ uid: 'noclaims', email: 'noclaims@test.com', password: 'Password123!' });
+    const token = await idTokenFor('noclaims');
+    const response = await createSessionRoute(post('http://localhost/api/auth/session', { idToken: token }));
+    expect(response.status).toBe(403);
+  });
+
+  it('clears the cookie on sign-out', async () => {
+    const response = await deleteSessionRoute();
+    expect(response.headers.get('set-cookie')).toMatch(new RegExp(`${SESSION_COOKIE}=;.*Max-Age=0`, 'i'));
   });
 });

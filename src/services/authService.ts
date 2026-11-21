@@ -83,6 +83,7 @@ export class AuthService {
 
       // Sign in to pick up an ID token containing the new claims.
       const credential = await signInWithEmailAndPassword(firebaseAuthInstance, email, password);
+      await this.establishSession(credential.user);
       const enhancedUser = await this.getEnhancedUserData(credential.user.uid);
 
       return {
@@ -137,6 +138,10 @@ export class AuthService {
         lastLoginAt: Timestamp.now()
       });
 
+      // Server-side route protection reads an httpOnly session cookie, not the
+      // client SDK's state. Without it, middleware would bounce every protected page.
+      await this.establishSession(firebaseUser);
+
       return this.convertToAuthUser(firebaseUser, enhancedUser);
     } catch (error) {
       console.error('Login failed:', error);
@@ -149,18 +154,26 @@ export class AuthService {
    */
   static async signOut(): Promise<void> {
     try {
-      const currentUser = firebaseAuthInstance.currentUser;
-      const userId = currentUser?.uid;
-
+      // Clear the server session first; if that request fails the cookie still
+      // expires on its own, so it must not block signing out locally.
+      await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => undefined);
       await firebaseSignOut(firebaseAuthInstance);
-
-      // Log successful logout
-      if (userId) {
-      }
     } catch (error) {
       console.error('Logout failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Exchange the current ID token for the httpOnly session cookie that
+   * middleware.ts checks before rendering protected pages.
+   */
+  static async establishSession(firebaseUser: FirebaseUser): Promise<void> {
+    const idToken = await firebaseUser.getIdToken();
+    await apiFetchPublic('/api/auth/session', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    });
   }
 
   /**
